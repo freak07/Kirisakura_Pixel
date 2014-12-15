@@ -155,6 +155,9 @@ struct cpufreq_policy {
 #ifdef CONFIG_CPU_FREQ
 struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu);
 void cpufreq_cpu_put(struct cpufreq_policy *policy);
+#ifdef CONFIG_CPU_FREQ_LIMIT_BOOT_CURRENT
+extern unsigned int cluster1_first_cpu;
+#endif
 #else
 static inline struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu)
 {
@@ -548,6 +551,9 @@ extern struct cpufreq_governor cpufreq_gov_sched;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL)
 extern struct cpufreq_governor cpufreq_gov_schedutil;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_schedutil)
+#endif#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_BLU_ACTIVE)
+extern struct cpufreq_governor cpufreq_gov_blu_active;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_blu_active)
 #endif
 
 static inline void cpufreq_policy_apply_limits(struct cpufreq_policy *policy)
