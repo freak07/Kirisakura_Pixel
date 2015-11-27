@@ -22,6 +22,12 @@
 #include "power.h"
 #include <soc/qcom/htc_util.h>
 
+static bool enable_wlan_rx_wake_ws = true;
+module_param(enable_wlan_rx_wake_ws, bool, 0644);
+static bool enable_wlan_ctrl_wake_ws = true;
+module_param(enable_wlan_ctrl_wake_ws, bool, 0644);
+static bool enable_wlan_wake_ws = true;
+module_param(enable_wlan_wake_ws, bool, 0644);
 static bool enable_qcom_rx_wakelock_ws = false;
 module_param(enable_qcom_rx_wakelock_ws, bool, 0644);
 static bool enable_wlan_extscan_wl_ws = false;
@@ -335,6 +341,40 @@ void device_wakeup_detach_irq(struct device *dev)
 }
 
 /**
+ * device_wakeup_arm_wake_irqs(void)
+ *
+ * Itereates over the list of device wakeirqs to arm them.
+ */
+void device_wakeup_arm_wake_irqs(void)
+{
+	struct wakeup_source *ws;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		if (ws->wakeirq)
+			dev_pm_arm_wake_irq(ws->wakeirq);
+	}
+	rcu_read_unlock();
+}
+
+/**
+ * device_wakeup_disarm_wake_irqs(void)
+ *
+ * Itereates over the list of device wakeirqs to disarm them.
+ */
+void device_wakeup_disarm_wake_irqs(void)
+{
+	struct wakeup_source *ws;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		if (ws->wakeirq)
+			dev_pm_disarm_wake_irq(ws->wakeirq);
+	}
+	rcu_read_unlock();
+}
+
+/**
  * device_wakeup_detach - Detach a device's wakeup source object from it.
  * @dev: Device to detach the wakeup source object from.
  *
@@ -574,6 +614,15 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 
 		return;
 	}
+
+	if (!enable_wlan_rx_wake_ws && !strcmp(ws->name, "wlan_rx_wake"))
+                return;
+
+	if (!enable_wlan_ctrl_wake_ws && !strcmp(ws->name, "wlan_ctrl_wake"))
+                return;
+
+	if (!enable_wlan_wake_ws && !strcmp(ws->name, "wlan_wake"))
+                return;
 
 	/*
 	 * active wakeup source should bring the system
