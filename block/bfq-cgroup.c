@@ -258,6 +258,7 @@ static void bfqg_stats_add_aux(struct bfqg_stats *to, struct bfqg_stats *from)
 	if (!to || !from)
 		return;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	/* queued stats shouldn't be cleared */
 	blkg_rwstat_add_aux(&to->merged, &from->merged);
 	blkg_rwstat_add_aux(&to->service_time, &from->service_time);
@@ -270,6 +271,7 @@ static void bfqg_stats_add_aux(struct bfqg_stats *to, struct bfqg_stats *from)
 	blkg_stat_add_aux(&to->group_wait_time, &from->group_wait_time);
 	blkg_stat_add_aux(&to->idle_time, &from->idle_time);
 	blkg_stat_add_aux(&to->empty_time, &from->empty_time);
+#endif
 }
 
 /*
@@ -313,6 +315,7 @@ static void bfq_init_entity(struct bfq_entity *entity,
 
 static void bfqg_stats_exit(struct bfqg_stats *stats)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	blkg_rwstat_exit(&stats->merged);
 	blkg_rwstat_exit(&stats->service_time);
 	blkg_rwstat_exit(&stats->wait_time);
@@ -324,8 +327,10 @@ static void bfqg_stats_exit(struct bfqg_stats *stats)
 	blkg_stat_exit(&stats->group_wait_time);
 	blkg_stat_exit(&stats->idle_time);
 	blkg_stat_exit(&stats->empty_time);
+#endif
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static int bfqg_stats_init(struct bfqg_stats *stats, gfp_t gfp)
 {
 	if (blkg_rwstat_init(&stats->merged, gfp) ||
@@ -345,7 +350,9 @@ static int bfqg_stats_init(struct bfqg_stats *stats, gfp_t gfp)
 
 	return 0;
 }
+#endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0)
 static struct bfq_group_data *cpd_to_bfqgd(struct blkcg_policy_data *cpd)
 {
 	return cpd ? container_of(cpd, struct bfq_group_data, pd) : NULL;
@@ -378,7 +385,19 @@ static void bfq_cpd_free(struct blkcg_policy_data *cpd)
 {
 	kfree(cpd_to_bfqgd(cpd));
 }
+#else
 
+#if 0
+static struct bfq_group_data *blkcg_to_bfqgd(struct blkcg *blkcg)
+{
+#warn FIXME need to implement blkcg_to_bfqgd! was: cpd_to_bfqgd(blkcg_to_cpd(blkcg, &blkcg_policy_bfq));
+	return -1; 
+}
+#endif
+
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static struct blkg_policy_data *bfq_pd_alloc(gfp_t gfp, int node)
 {
 	struct bfq_group *bfqg;
@@ -394,23 +413,32 @@ static struct blkg_policy_data *bfq_pd_alloc(gfp_t gfp, int node)
 
 	return &bfqg->pd;
 }
+#endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static void bfq_pd_init(struct blkg_policy_data *pd)
 {
-	struct blkcg_gq *blkg;
+	struct blkcg_gq *blkg = pd_to_blkg(pd);
+	struct bfq_group_data *d;
+#else
+static void bfq_pd_init(struct blkcg_gq *blkg)
+{
+#endif
 	struct bfq_group *bfqg;
 	struct bfq_data *bfqd;
 	struct bfq_entity *entity;
-	struct bfq_group_data *d;
 
-	blkg = pd_to_blkg(pd);
 	BUG_ON(!blkg);
 	bfqg = blkg_to_bfqg(blkg);
 	bfqd = blkg->q->elevator->elevator_data;
 	entity = &bfqg->entity;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	d = blkcg_to_bfqgd(blkg->blkcg);
-
 	entity->orig_weight = entity->weight = entity->new_weight = d->weight;
+#else
+	entity->orig_weight = entity->weight = entity->new_weight = 100;
+#endif
+
 	entity->my_sched_data = &bfqg->sched_data;
 	bfqg->my_entity = entity; /*
 				   * the root_group's will be set to NULL
@@ -421,17 +449,29 @@ static void bfq_pd_init(struct blkg_policy_data *pd)
 	bfqg->rq_pos_tree = RB_ROOT;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static void bfq_pd_free(struct blkg_policy_data *pd)
 {
 	struct bfq_group *bfqg = pd_to_bfqg(pd);
+#else
+static void bfq_pd_exit(struct blkcg_gq *blkg)
+{
+	struct bfq_group *bfqg = blkg_to_bfqg(blkg);
+#endif
 
 	bfqg_stats_exit(&bfqg->stats);
 	return kfree(bfqg);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static void bfq_pd_reset_stats(struct blkg_policy_data *pd)
 {
 	struct bfq_group *bfqg = pd_to_bfqg(pd);
+#else
+static void bfq_pd_reset_stats(struct blkcg_gq *blkg)
+{
+	struct bfq_group *bfqg = blkg_to_bfqg(blkg);
+#endif
 
 	bfqg_stats_reset(&bfqg->stats);
 }
@@ -705,16 +745,25 @@ static void bfq_reparent_active_entities(struct bfq_data *bfqd,
  * blkio already grabs the queue_lock for us, so no need to use
  * RCU-based magic
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static void bfq_pd_offline(struct blkg_policy_data *pd)
 {
+#else
+static void bfq_pd_offline(struct blkcg_gq *blkg)
+{
+#endif
 	struct bfq_service_tree *st;
 	struct bfq_group *bfqg;
 	struct bfq_data *bfqd;
 	struct bfq_entity *entity;
 	int i;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	BUG_ON(!pd);
 	bfqg = pd_to_bfqg(pd);
+#else
+	bfqg = blkg_to_bfqg(blkg);
+#endif
 	BUG_ON(!bfqg);
 	bfqd = bfqg->bfqd;
 	BUG_ON(bfqd && !bfqd->root_group);
@@ -784,6 +833,7 @@ static void bfq_end_wr_async(struct bfq_data *bfqd)
 	bfq_end_wr_async_queues(bfqd, bfqd->root_group);
 }
 
+#if 0 /* blkcg_to_bfqgd doesn't work in v4.1 */
 static int bfq_io_show_weight(struct seq_file *sf, void *v)
 {
 	struct blkcg *blkcg = css_to_blkcg(seq_css(sf));
@@ -849,7 +899,15 @@ static int bfq_io_set_weight_legacy(struct cgroup_subsys_state *css,
 
 	return ret;
 }
+#endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
+/* Used in v4.3+ here:
+ * struct blkcg_policy blkcg_policy_bfq = 
+ * 	{ .dfl_cftypes = bfq_blkg_files = 
+ * 		{ .write = bfq_io_set_weight } 
+ * 	}
+ */
 static ssize_t bfq_io_set_weight(struct kernfs_open_file *of,
 				 char *buf, size_t nbytes,
 				 loff_t off)
@@ -863,6 +921,7 @@ static ssize_t bfq_io_set_weight(struct kernfs_open_file *of,
 
 	return bfq_io_set_weight_legacy(of_css(of), NULL, weight);
 }
+#endif
 
 static int bfqg_print_stat(struct seq_file *sf, void *v)
 {
@@ -878,20 +937,31 @@ static int bfqg_print_rwstat(struct seq_file *sf, void *v)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static u64 bfqg_prfill_stat_recursive(struct seq_file *sf,
 				      struct blkg_policy_data *pd, int off)
 {
-	u64 sum = blkg_stat_recursive_sum(pd_to_blkg(pd),
+	u64 sum = 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
+		blkg_stat_recursive_sum(pd_to_blkg(pd),
 					  &blkcg_policy_bfq, off);
+#else
+		blkg_stat_recursive_sum(pd, off);
+#endif
 	return __blkg_prfill_u64(sf, pd, sum);
 }
 
 static u64 bfqg_prfill_rwstat_recursive(struct seq_file *sf,
 					struct blkg_policy_data *pd, int off)
 {
-	struct blkg_rwstat sum = blkg_rwstat_recursive_sum(pd_to_blkg(pd),
+	struct blkg_rwstat sum = 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
+		blkg_rwstat_recursive_sum(pd_to_blkg(pd),
 							   &blkcg_policy_bfq,
 							   off);
+#else
+		blkg_rwstat_recursive_sum(pd, off);
+#endif
 	return __blkg_prfill_rwstat(sf, pd, &sum);
 }
 
@@ -929,10 +999,18 @@ static int bfqg_print_stat_sectors(struct seq_file *sf, void *v)
 static u64 bfqg_prfill_sectors_recursive(struct seq_file *sf,
 					 struct blkg_policy_data *pd, int off)
 {
-	struct blkg_rwstat tmp = blkg_rwstat_recursive_sum(pd->blkg, NULL,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
+	struct blkg_rwstat tmp = 
+		blkg_rwstat_recursive_sum(pd->blkg, NULL,
 					offsetof(struct blkcg_gq, stat_bytes));
 	u64 sum = atomic64_read(&tmp.aux_cnt[BLKG_RWSTAT_READ]) +
 		atomic64_read(&tmp.aux_cnt[BLKG_RWSTAT_WRITE]);
+#else /* the else case could be removed since both functions are required in v4.3 */
+	struct blkg_rwstat tmp = 
+		blkg_rwstat_recursive_sum(pd, offsetof(struct blkcg_gq, stat_bytes));
+
+	u64 sum = tmp.cnt[BLKG_RWSTAT_READ] + tmp.cnt[BLKG_RWSTAT_WRITE];
+#endif
 
 	return __blkg_prfill_u64(sf, pd, sum >> 9);
 }
@@ -944,6 +1022,7 @@ static int bfqg_print_stat_sectors_recursive(struct seq_file *sf, void *v)
 			  false);
 	return 0;
 }
+#endif /* #if v4.3+ */
 
 
 static u64 bfqg_prfill_avg_queue_size(struct seq_file *sf,
@@ -983,13 +1062,16 @@ bfq_create_group_hierarchy(struct bfq_data *bfqd, int node)
 }
 
 static struct cftype bfq_blkcg_legacy_files[] = {
+#if 0 /* requires blkcg_to_bfqgd */
 	{
 		.name = "bfq.weight",
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.seq_show = bfq_io_show_weight,
 		.write_u64 = bfq_io_set_weight_legacy,
 	},
+#endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	/* statistics, covers only the tasks in the bfqg */
 	{
 		.name = "bfq.time",
@@ -1010,6 +1092,7 @@ static struct cftype bfq_blkcg_legacy_files[] = {
 		.private = (unsigned long)&blkcg_policy_bfq,
 		.seq_show = blkg_print_stat_ios,
 	},
+#endif
 	{
 		.name = "bfq.io_service_time",
 		.private = offsetof(struct bfq_group, stats.service_time),
@@ -1031,6 +1114,7 @@ static struct cftype bfq_blkcg_legacy_files[] = {
 		.seq_show = bfqg_print_rwstat,
 	},
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	/* the same statictics which cover the bfqg and its descendants */
 	{
 		.name = "bfq.time_recursive",
@@ -1071,6 +1155,7 @@ static struct cftype bfq_blkcg_legacy_files[] = {
 		.private = offsetof(struct bfq_group, stats.queued),
 		.seq_show = bfqg_print_rwstat_recursive,
 	},
+#endif
 	{
 		.name = "bfq.avg_queue_size",
 		.seq_show = bfqg_print_avg_queue_size,
@@ -1098,6 +1183,9 @@ static struct cftype bfq_blkcg_legacy_files[] = {
 	{ }	/* terminate */
 };
 
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
+/* Used in v4.3+ by struct blkcg_policy blkcg_policy_bfq = { .dfl_cftypes = bfq_blkg_files } */
 static struct cftype bfq_blkg_files[] = {
 	{
 		.name = "bfq.weight",
@@ -1107,6 +1195,7 @@ static struct cftype bfq_blkg_files[] = {
 	},
 	{} /* terminate */
 };
+#endif
 
 #else /* CONFIG_BFQ_GROUP_IOSCHED */
 

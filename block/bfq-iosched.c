@@ -4814,6 +4814,7 @@ static struct elevator_type iosched_bfq = {
 
 #ifdef CONFIG_BFQ_GROUP_IOSCHED
 static struct blkcg_policy blkcg_policy_bfq = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	.dfl_cftypes		= bfq_blkg_files,
 	.legacy_cftypes		= bfq_blkcg_legacy_files,
 
@@ -4821,11 +4822,15 @@ static struct blkcg_policy blkcg_policy_bfq = {
 	.cpd_init_fn		= bfq_cpd_init,
 	.cpd_bind_fn	        = bfq_cpd_init,
 	.cpd_free_fn		= bfq_cpd_free,
-
-	.pd_alloc_fn		= bfq_pd_alloc,
+	.pd_alloc_fn		= bfq_pd_alloc,  /* Paolo, does this need a v4.1 equivelent? */
+	.pd_free_fn		= bfq_pd_free,   /* is free really equivelent to exit in v4.1? */
+#else
+	.cftypes		= bfq_blkcg_legacy_files,
+	.pd_exit_fn		= bfq_pd_exit, 
+	.pd_size 		= sizeof(struct blkg_policy_data),
+#endif
 	.pd_init_fn		= bfq_pd_init,
 	.pd_offline_fn		= bfq_pd_offline,
-	.pd_free_fn		= bfq_pd_free,
 	.pd_reset_stats_fn	= bfq_pd_reset_stats,
 };
 #endif
