@@ -32,6 +32,12 @@
 
 #include <trace/events/block.h>
 
+#include <linux/version.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0) /* BFQ backport fixup */
+#define bio_associate_blkcg(a, b) 0
+#endif
+
+
 /*
  * Test patch to inline a certain number of bi_io_vec's inside the bio
  * itself, to shrink a bio data allocation from two mempool calls to one
