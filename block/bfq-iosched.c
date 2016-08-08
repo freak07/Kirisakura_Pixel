@@ -4827,7 +4827,7 @@ static struct blkcg_policy blkcg_policy_bfq = {
 #else
 	.cftypes		= bfq_blkcg_legacy_files,
 	.pd_exit_fn		= bfq_pd_exit, 
-	.pd_size 		= sizeof(struct blkg_policy_data),
+	.pd_size 		= sizeof(struct bfq_group),
 #endif
 	.pd_init_fn		= bfq_pd_init,
 	.pd_offline_fn		= bfq_pd_offline,
