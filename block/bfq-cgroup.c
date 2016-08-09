@@ -460,7 +460,16 @@ static void bfq_pd_exit(struct blkcg_gq *blkg)
 #endif
 
 	bfqg_stats_exit(&bfqg->stats);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	return kfree(bfqg);
+#else
+	/* bfg_group is built into the pd via .pd_size
+	 * so don't free it if < v4.3; see commit
+	 * 001bea73e70efdf48a9e00188cf302f6b6aed2bf
+	 */
+	return; 
+#endif
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
