@@ -387,13 +387,13 @@ static void bfq_cpd_free(struct blkcg_policy_data *cpd)
 }
 #else
 
-#if 0
+/* TODO for pre-v4.3: need to implement blkcg_to_bfqgd to support weights.
 static struct bfq_group_data *blkcg_to_bfqgd(struct blkcg *blkcg)
 {
-#warn FIXME need to implement blkcg_to_bfqgd! was: cpd_to_bfqgd(blkcg_to_cpd(blkcg, &blkcg_policy_bfq));
+	
 	return -1; 
-}
-#endif
+} 
+*/
 
 #endif
 
@@ -833,7 +833,7 @@ static void bfq_end_wr_async(struct bfq_data *bfqd)
 	bfq_end_wr_async_queues(bfqd, bfqd->root_group);
 }
 
-#if 0 /* blkcg_to_bfqgd doesn't work in v4.1 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static int bfq_io_show_weight(struct seq_file *sf, void *v)
 {
 	struct blkcg *blkcg = css_to_blkcg(seq_css(sf));
@@ -1062,7 +1062,7 @@ bfq_create_group_hierarchy(struct bfq_data *bfqd, int node)
 }
 
 static struct cftype bfq_blkcg_legacy_files[] = {
-#if 0 /* requires blkcg_to_bfqgd */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 	{
 		.name = "bfq.weight",
 		.flags = CFTYPE_NOT_ON_ROOT,
