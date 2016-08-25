@@ -352,7 +352,7 @@ static int bfqg_stats_init(struct bfqg_stats *stats, gfp_t gfp)
 }
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
 static struct bfq_group_data *cpd_to_bfqgd(struct blkcg_policy_data *cpd)
 {
 	return cpd ? container_of(cpd, struct bfq_group_data, pd) : NULL;
