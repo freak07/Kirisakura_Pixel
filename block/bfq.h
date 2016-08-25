@@ -18,7 +18,11 @@
 #include <linux/ioprio.h>
 #include <linux/rbtree.h>
 #include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0)
+#include <linux/blk-cgroup.h>
+#else
 #include "blk-cgroup.h"
+#endif
 
 #define BFQ_IOPRIO_CLASSES	3
 #define BFQ_CL_IDLE_TIMEOUT	(HZ/5)
