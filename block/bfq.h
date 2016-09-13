@@ -424,7 +424,7 @@ struct bfq_data {
 	 * Timer set when idling (waiting) for the next request from
 	 * the queue in service.
 	 */
-	struct timer_list idle_slice_timer;
+	struct hrtimer idle_slice_timer;
 	/* delayed work to restart dispatching on the request queue */
 	struct work_struct unplug_work;
 
@@ -456,7 +456,7 @@ struct bfq_data {
 	 * Timeout for async/sync requests; when it fires, requests
 	 * are served in fifo order.
 	 */
-	unsigned int bfq_fifo_expire[2];
+	u64 bfq_fifo_expire[2];
 	/* weight of backward seeks wrt forward ones */
 	unsigned int bfq_back_penalty;
 	/* maximum allowed backward seek */
