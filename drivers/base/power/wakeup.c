@@ -21,6 +21,9 @@
 #include "power.h"
 #include <soc/qcom/htc_util.h>
 
+static bool enable_ipa_ws = false;
+module_param(enable_ipa_ws, bool, 0644);
+
 /*
  * If set, the suspend/hibernate code will abort transitions to a sleep state
  * if wakeup events are registered during or immediately before the transition.
@@ -463,6 +466,16 @@ int device_set_wakeup_enable(struct device *dev, bool enable)
 }
 EXPORT_SYMBOL_GPL(device_set_wakeup_enable);
 
+#ifdef CONFIG_PM_AUTOSLEEP
+static void update_prevent_sleep_time(struct wakeup_source *ws, ktime_t now)
+{
+	ktime_t delta = ktime_sub(now, ws->start_prevent_time);
+	ws->prevent_sleep_time = ktime_add(ws->prevent_sleep_time, delta);
+}
+#else
+static inline void update_prevent_sleep_time(struct wakeup_source *ws,
+					     ktime_t now) {}
+#endif
 
 /**
  * wakup_source_deactivate - Mark given wakeup source as inactive.
@@ -559,6 +572,13 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
 static void wakeup_source_activate(struct wakeup_source *ws)
 {
 	unsigned int cec;
+
+	if (!enable_ipa_ws && !strncmp(ws->name, "IPA_WS", 6)) {
+		if (ws->active)
+			wakeup_source_deactivate(ws);
+
+		return;
+	}
 
 	/*
 	 * active wakeup source should bring the system
