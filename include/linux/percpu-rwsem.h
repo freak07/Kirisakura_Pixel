@@ -22,7 +22,7 @@ static struct percpu_rw_semaphore name = {				\
 	.rss = __RCU_SYNC_INITIALIZER(name.rss, RCU_SCHED_SYNC),	\
 	.read_count = &__percpu_rwsem_rc_##name,			\
 	.rw_sem = __RWSEM_INITIALIZER(name.rw_sem),			\
-	.writer = __WAIT_QUEUE_HEAD_INITIALIZER(name.writer),		\
+	.writer = __SWAIT_QUEUE_HEAD_INITIALIZER(name.writer),		\
 }
 
 extern int __percpu_down_read(struct percpu_rw_semaphore *, int);
