@@ -48,6 +48,8 @@
 #include <wlan_hdd_tgt_cfg.h>
 
 #define FW_MODULE_LOG_LEVEL_STRING_LENGTH  (255)
+#define TX_SCHED_WRR_PARAM_STRING_LENGTH   (50)
+#define TX_SCHED_WRR_PARAMS_NUM            (5)
 
 #ifdef DHCP_SERVER_OFFLOAD
 #define IPADDR_NUM_ENTRIES     (4)
@@ -728,7 +730,7 @@ enum
 #define CFG_INFRA_STA_KEEP_ALIVE_PERIOD_NAME          "gStaKeepAlivePeriod"
 #define CFG_INFRA_STA_KEEP_ALIVE_PERIOD_MIN           ( 0 )
 #define CFG_INFRA_STA_KEEP_ALIVE_PERIOD_MAX           ( 65535)
-#define CFG_INFRA_STA_KEEP_ALIVE_PERIOD_DEFAULT       ( 0 )
+#define CFG_INFRA_STA_KEEP_ALIVE_PERIOD_DEFAULT       ( 30 )
 
 //WMM configuration
 #define CFG_QOS_WMM_MODE_NAME                             "WmmIsEnabled"
@@ -1260,7 +1262,7 @@ enum
 #define CFG_ENABLE_HOST_ARPOFFLOAD_NAME         "hostArpOffload"
 #define CFG_ENABLE_HOST_ARPOFFLOAD_MIN          ( 0 )
 #define CFG_ENABLE_HOST_ARPOFFLOAD_MAX          ( 1 )
-#define CFG_ENABLE_HOST_ARPOFFLOAD_DEFAULT      ( 0 )
+#define CFG_ENABLE_HOST_ARPOFFLOAD_DEFAULT      ( 1 )
 
 #define CFG_ENABLE_HOST_SSDP_NAME              "ssdp"
 #define CFG_ENABLE_HOST_SSDP_MIN               ( 0 )
@@ -1289,7 +1291,7 @@ enum
 #define CFG_ENABLE_HOST_NSOFFLOAD_NAME         "hostNSOffload"
 #define CFG_ENABLE_HOST_NSOFFLOAD_MIN          ( 0 )
 #define CFG_ENABLE_HOST_NSOFFLOAD_MAX          ( 1 )
-#define CFG_ENABLE_HOST_NSOFFLOAD_DEFAULT      ( 0 )
+#define CFG_ENABLE_HOST_NSOFFLOAD_DEFAULT      ( 1 )
 
 
 #define CFG_BAND_CAPABILITY_NAME          "BandCapability"
@@ -2107,14 +2109,14 @@ typedef enum
 #define CFG_TDLS_IMPLICIT_TRIGGER_DEFAULT           ( 0 )
 
 #define CFG_TDLS_TX_STATS_PERIOD                    "gTDLSTxStatsPeriod"
-#define CFG_TDLS_TX_STATS_PERIOD_MIN                ( 10 )
+#define CFG_TDLS_TX_STATS_PERIOD_MIN                (1000)
 #define CFG_TDLS_TX_STATS_PERIOD_MAX                ( 4294967295UL )
-#define CFG_TDLS_TX_STATS_PERIOD_DEFAULT            (500)
+#define CFG_TDLS_TX_STATS_PERIOD_DEFAULT            (2000)
 
 #define CFG_TDLS_TX_PACKET_THRESHOLD                "gTDLSTxPacketThreshold"
 #define CFG_TDLS_TX_PACKET_THRESHOLD_MIN            ( 0 )
 #define CFG_TDLS_TX_PACKET_THRESHOLD_MAX            ( 4294967295UL )
-#define CFG_TDLS_TX_PACKET_THRESHOLD_DEFAULT        (10)
+#define CFG_TDLS_TX_PACKET_THRESHOLD_DEFAULT        (40)
 
 #define CFG_TDLS_DISCOVERY_PERIOD                   "gTDLSDiscoveryPeriod"
 #define CFG_TDLS_DISCOVERY_PERIOD_MIN               ( 5000 )
@@ -2196,7 +2198,7 @@ typedef enum
 #define CFG_TDLS_EXTERNAL_CONTROL                   "gTDLSExternalControl"
 #define CFG_TDLS_EXTERNAL_CONTROL_MIN               (0)
 #define CFG_TDLS_EXTERNAL_CONTROL_MAX               (1)
-#define CFG_TDLS_EXTERNAL_CONTROL_DEFAULT           (0)
+#define CFG_TDLS_EXTERNAL_CONTROL_DEFAULT           (1)
 
 #define CFG_TDLS_OFF_CHANNEL_SUPPORT_ENABLE          "gEnableTDLSOffChannel"
 #define CFG_TDLS_OFF_CHANNEL_SUPPORT_ENABLE_MIN      (0)
@@ -2222,7 +2224,7 @@ typedef enum
  *  and select one, based on the capability of peer.
  */
 #define CFG_TDLS_PREFERRED_OFF_CHANNEL_BW          "gTDLSPrefOffChanBandwidth"
-#define CFG_TDLS_PREFERRED_OFF_CHANNEL_BW_MIN      (0)
+#define CFG_TDLS_PREFERRED_OFF_CHANNEL_BW_MIN      (1)
 #define CFG_TDLS_PREFERRED_OFF_CHANNEL_BW_MAX      (0x0F)
 #define CFG_TDLS_PREFERRED_OFF_CHANNEL_BW_DEFAULT  (0x07)
 
@@ -2360,6 +2362,16 @@ typedef enum
 #define CFG_ENABLE_VHT_FOR_24GHZ_MIN              (0)
 #define CFG_ENABLE_VHT_FOR_24GHZ_MAX              (1)
 #define CFG_ENABLE_VHT_FOR_24GHZ_DEFAULT          (0)
+
+/*
+ * Parameter to control VHT support based on vendor ie in 2.4 GHz band
+ * This parameter will enable SAP to read VHT capability in vendor ie in Assoc
+ * Req and send VHT caps in Resp to establish connection in VHT Mode.
+ */
+#define CFG_ENABLE_VENDOR_VHT_FOR_24GHZ_NAME      "gEnableVendorVhtFor24GHzBand"
+#define CFG_ENABLE_VENDOR_VHT_FOR_24GHZ_MIN       (0)
+#define CFG_ENABLE_VENDOR_VHT_FOR_24GHZ_MAX       (1)
+#define CFG_ENABLE_VENDOR_VHT_FOR_24GHZ_DEFAULT   (1)
 
 
 #define CFG_MAX_MEDIUM_TIME                      "gMaxMediumTime"
@@ -2649,10 +2661,24 @@ This feature requires the dependent cfg.ini "gRoamPrefer5GHz" set to 1 */
 #define CFG_IBSS_PS_1RX_CHAIN_IN_ATIM_WINDOW_MAX     (1)
 #define CFG_IBSS_PS_1RX_CHAIN_IN_ATIM_WINDOW_DEFAULT (0)
 
+/*
+ * Max peers number of SAP
+ */
 #define CFG_SAP_MAX_NO_PEERS                       "gSoftApMaxPeers"
 #define CFG_SAP_MAX_NO_PEERS_MIN                   (1)
 #define CFG_SAP_MAX_NO_PEERS_MAX                   (32)
 #define CFG_SAP_MAX_NO_PEERS_DEFAULT               (32)
+
+/*
+ * Max peers number of P2P GO
+ * To make it backward compatible with old INI file which only set
+ * gSoftApMaxPeers, set gGoMaxPeers default value to 0, and add logic
+ * to set this item same as gSoftApMaxPeers if the value is 0
+ */
+#define CFG_GO_MAX_NO_PEERS                       "gGoMaxPeers"
+#define CFG_GO_MAX_NO_PEERS_MIN                   (0)
+#define CFG_GO_MAX_NO_PEERS_MAX                   (32)
+#define CFG_GO_MAX_NO_PEERS_DEFAULT               (0)
 
 /*
  * Connection related log Enable/Disable.
@@ -2668,7 +2694,7 @@ This feature requires the dependent cfg.ini "gRoamPrefer5GHz" set to 1 */
 #define CFG_ENABLE_DEBUG_CONNECT_ISSUE             "gEnableDebugLog"
 #define CFG_ENABLE_DEBUG_CONNECT_ISSUE_MIN         (0)
 #define CFG_ENABLE_DEBUG_CONNECT_ISSUE_MAX         (0xFF)
-#define CFG_ENABLE_DEBUG_CONNECT_ISSUE_DEFAULT     (0x40 | 0x20 | 0x10 | 0x04 | 0x02)
+#define CFG_ENABLE_DEBUG_CONNECT_ISSUE_DEFAULT     (0x76)
 
 /*
  * RX packet handling options
@@ -3394,6 +3420,41 @@ enum dot11p_mode {
 #define CFG_BTC_WLAN_INTERVAL_PAGE_SAP_MAX       (200)
 #define CFG_BTC_WLAN_INTERVAL_PAGE_SAP_DEFAULT   (30)
 
+/**
+ * Config to set WLAN connection params
+ * 0: coex preference
+ * 1: reserved
+ */
+#define CFG_BTC_WLAN_CONN_PARAM0                 "gWlanConnVal0"
+#define CFG_BTC_WLAN_CONN_PARAM0_MIN             (0)
+#define CFG_BTC_WLAN_CONN_PARAM0_MAX             (0xffffffff)
+#define CFG_BTC_WLAN_CONN_PARAM0_DEFAULT         (0)
+
+#define CFG_BTC_WLAN_CONN_PARAM1                 "gWlanConnVal1"
+#define CFG_BTC_WLAN_CONN_PARAM1_MIN             (0)
+#define CFG_BTC_WLAN_CONN_PARAM1_MAX             (0xffffffff)
+#define CFG_BTC_WLAN_CONN_PARAM1_DEFAULT         (0)
+
+/**
+ * Config to set BT WLAN co-existing
+ * 0: enable BT WLAN co-existing
+ * 1: dynamically disable BT WLAN co-existing
+ */
+#define CFG_BTC_DYNAMIC_WLAN_BT_COEX           "gDynamicBTCOEX"
+#define CFG_BTC_DYNAMIC_WLAN_BT_COEX_MIN       (0)
+#define CFG_BTC_DYNAMIC_WLAN_BT_COEX_MAX       (1)
+#define CFG_BTC_DYNAMIC_WLAN_BT_COEX_DEFAULT   (0)
+
+/**
+ * Config to set antenna isolation
+ * range: 0 - 100 db
+ * default: 0 db
+ */
+#define CFG_BTC_ANTENNA_ISOLATION           "gAntennaIsolation"
+#define CFG_BTC_ANTENNA_ISOLATION_MIN       (0)
+#define CFG_BTC_ANTENNA_ISOLATION_MAX       (100)
+#define CFG_BTC_ANTENNA_ISOLATION_DEFAULT   (0)
+
 
 /* Parameters for roaming scans performed at high RSSI */
 
@@ -3828,24 +3889,87 @@ enum dot11p_mode {
 #define CFG_EDCA_BE_AIFS_VALUE_MAX        (15)
 #define CFG_EDCA_BE_AIFS_VALUE_DEFAULT    (3)
 
+
+/*
+ * This key is mapping to VO defined in data path module through
+ * OL_TX_SCHED_WRR_ADV_CAT_CFG_SPEC. The user can tune the
+ * WRR TX sched parameters such as skip, credit, limit, credit, disc for VO.
+ * e.g., gEnableTxSchedWrrVO = 10, 9, 8, 1, 8
+ */
+#define CFG_ENABLE_TX_SCHED_WRR_VO          "gEnableTxSchedWrrVO"
+#define CFG_ENABLE_TX_SCHED_WRR_VO_DEFAULT  ""
+
+/*
+ * This key is mapping to VI defined in data path module through
+ * OL_TX_SCHED_WRR_ADV_CAT_CFG_SPEC. The user can tune the
+ * WRR TX sched parameters such as skip, credit, limit, credit, disc for VI.
+ * e.g., gEnableTxSchedWrrVI = 10, 9, 8, 1, 8
+ */
+#define CFG_ENABLE_TX_SCHED_WRR_VI          "gEnableTxSchedWrrVI"
+#define CFG_ENABLE_TX_SCHED_WRR_VI_DEFAULT  ""
+
+/*
+ * This key is mapping to BE defined in data path module through
+ * OL_TX_SCHED_WRR_ADV_CAT_CFG_SPEC. The user can tune the
+ * WRR TX sched parameters such as skip, credit, limit, credit, disc for BE.
+ * e.g., gEnableTxSchedWrrBE = 10, 9, 8, 1, 8
+ */
+#define CFG_ENABLE_TX_SCHED_WRR_BE          "gEnableTxSchedWrrBE"
+#define CFG_ENABLE_TX_SCHED_WRR_BE_DEFAULT  ""
+
+/*
+ * This key is mapping to BK defined in data path module through
+ * OL_TX_SCHED_WRR_ADV_CAT_CFG_SPEC. The user can tune the
+ * WRR TX sched parameters such as skip, credit, limit, credit, disc for BK.
+ * e.g., gEnableTxSchedWrrBK = 10, 9, 8, 1, 8
+ */
+#define CFG_ENABLE_TX_SCHED_WRR_BK          "gEnableTxSchedWrrBK"
+#define CFG_ENABLE_TX_SCHED_WRR_BK_DEFAULT  ""
+
 #define CFG_TGT_GTX_USR_CFG_NAME      "tgt_gtx_usr_cfg"
 #define CFG_TGT_GTX_USR_CFG_MIN       (0)
 #define CFG_TGT_GTX_USR_CFG_MAX       (32)
 #define CFG_TGT_GTX_USR_CFG_DEFAULT   (32)
 
-#define CFG_CH_AVOID_SAP_RESTART_NAME    "sap_ch_avoid_restart"
-#define CFG_CH_AVOID_SAP_RESTART_MIN     (0)
-#define CFG_CH_AVOID_SAP_RESTART_MAX     (1)
-#define CFG_CH_AVOID_SAP_RESTART_DEFAULT (0)
+#define CFG_SAP_INTERNAL_RESTART_NAME    "gEnableSapInternalRestart"
+#define CFG_SAP_INTERNAL_RESTART_MIN     (0)
+#define CFG_SAP_INTERNAL_RESTART_MAX     (1)
+#define CFG_SAP_INTERNAL_RESTART_DEFAULT (1)
 
-#define CFG_RX_WAKELOCK_TIMEOUT_NAME         "rx_wakelock_timeout"
-#define CFG_RX_WAKELOCK_TIMEOUT_DEFAULT      (50)
-#define CFG_RX_WAKELOCK_TIMEOUT_MIN          (0)
-#define CFG_RX_WAKELOCK_TIMEOUT_MAX          (100)
+/*
+ * This parameter will help to debug ssr reinit failure issues
+ * by raising vos bug so dumps can be collected. If OEM
+ * wants to avoid this crash, just disable this parameter.
+ * wlan driver will only recover after driver unload and load.
+ * Default: Enable
+ */
+#define CFG_BUG_ON_REINIT_FAILURE_NAME     "g_bug_on_reinit_failure"
+#define CFG_BUG_ON_REINIT_FAILURE_MIN      (0)
+#define CFG_BUG_ON_REINIT_FAILURE_MAX      (1)
+#define CFG_BUG_ON_REINIT_FAILURE_DEFAULT  (1)
+
+/*
+ * This parameter will avoid updating ap_sta_inactivity from hostapd.conf
+ * file. If a station does not send anything in ap_max_inactivity seconds, an
+ * empty data frame is sent to it in order to verify whether it is
+ * still in range. If this frame is not ACKed, the station will be
+ * disassociated and then deauthenticated. This feature is used to
+ * clear station table of old entries when the STAs move out of the
+ * range.
+ * Default : Disable
+ */
+#define CFG_SAP_MAX_INACTIVITY_OVERRIDE_NAME     "gSapMaxInactivityOverride"
+#define CFG_SAP_MAX_INACTIVITY_OVERRIDE_DEFAULT  (0)
+#define CFG_SAP_MAX_INACTIVITY_OVERRIDE_MIN      (0)
+#define CFG_SAP_MAX_INACTIVITY_OVERRIDE_MAX      (1)
+
 /*
  * In static display use case when APPS is in stand alone power save mode enable
  * active offload mode which helps FW to filter out MC/BC data packets to avoid
  * APPS wake up and save more power.
+ *
+ * By default enable active mode offload as it helps to save more power in
+ * static display usecase(APPS stand alone power collapse).
  *
  * If active mode offload(gActiveModeOffload=1) is enabled then all applicable
  * data offload/filtering is enabled immediately in FW once config is available
@@ -3859,6 +3983,26 @@ enum dot11p_mode {
 #define CFG_ACTIVE_MODE_OFFLOAD_MIN        (0)
 #define CFG_ACTIVE_MODE_OFFLOAD_MAX        (1)
 #define CFG_ACTIVE_MODE_OFFLOAD_DEFAULT    (0)
+
+
+/*
+ * This parameter will control SIFS burst duration in FW from 0 to 12 ms.
+ * Default value is set to 8ms.
+ */
+
+#define CFG_SIFS_BURST_DURATION_NAME     "g_sifs_burst_duration"
+#define CFG_SIFS_BURST_DURATION_MIN      (0)
+#define CFG_SIFS_BURST_DURATION_MAX      (12)
+#define CFG_SIFS_BURST_DURATION_DEFAULT  (8)
+
+/*
+ * 0: Disable BPF packet filter
+ * 1: Enable BPF packet filter
+ */
+#define CFG_BPF_PACKET_FILTER_OFFLOAD           "gBpfFilterEnable"
+#define CFG_BPF_PACKET_FILTER_OFFLOAD_MIN       (0)
+#define CFG_BPF_PACKET_FILTER_OFFLOAD_MAX       (1)
+#define CFG_BPF_PACKET_FILTER_OFFLOAD_DEFAULT   (1)
 
 /*---------------------------------------------------------------------------
   Type declarations
@@ -4286,7 +4430,6 @@ struct hdd_config {
    char                        listOfNonDfsCountryCode[128];
    v_BOOL_t                    enableSSR;
    v_U32_t                     cfgMaxMediumTime;
-   v_BOOL_t                    enableVhtFor24GHzBand;
 #ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
    /* Flag indicating whether legacy fast roam during concurrency is enabled in cfg.ini or not */
    v_BOOL_t                    bFastRoamInConIniFeatureEnabled;
@@ -4326,6 +4469,8 @@ struct hdd_config {
 #ifdef WLAN_FEATURE_11AC
    v_U8_t                      fVhtAmpduLenExponent;
    v_U32_t                     vhtMpduLen;
+   bool                        enableVhtFor24GHzBand;
+   bool                        enable_vendor_vht_for_24ghz_band;
 #endif
 #ifdef IPA_OFFLOAD
    v_U32_t                     IpaConfig;
@@ -4343,7 +4488,8 @@ struct hdd_config {
 #endif
    v_U8_t                      maxWoWFilters;
    v_U8_t                      wowEnable;
-   v_U8_t                      maxNumberOfPeers;
+   v_U8_t                      max_sap_peers;
+   v_U8_t                      max_go_peers;
    v_U8_t                      disableDFSChSwitch;
    v_U8_t                      enableDFSMasterCap;
    v_U16_t                     thermalTempMinLevel0;
@@ -4547,6 +4693,12 @@ struct hdd_config {
    uint32_t                    coex_page_sap_bt_interval;
    uint32_t                    coex_page_sap_wlan_interval;
 
+   uint32_t                    coex_config_wlan_conn_val0;
+   uint32_t                    coex_config_wlan_conn_val1;
+
+   uint32_t                    dynamic_wlan_bt_coex;
+   uint32_t                    antenna_isolation;
+
    uint8_t                     inform_bss_rssi_raw;
 #ifdef WLAN_FEATURE_TSF
    uint32_t                    tsf_gpio_pin;
@@ -4615,14 +4767,28 @@ struct hdd_config {
    uint32_t                    edca_bk_aifs;
    uint32_t                    edca_be_aifs;
    bool                        enable_dynamic_sta_chainmask;
-   /* parameter to force sap into 11n */
-   bool                        sap_force_11n_for_11ac;
+
+   /* Tuning TX sched parameters for VO (skip credit limit credit disc) */
+   uint8_t  tx_sched_wrr_vo[TX_SCHED_WRR_PARAM_STRING_LENGTH];
+   /* Tuning TX sched parameters for VI (skip credit limit credit disc) */
+   uint8_t  tx_sched_wrr_vi[TX_SCHED_WRR_PARAM_STRING_LENGTH];
+   /* Tuning TX sched parameters for BE (skip credit limit credit disc) */
+   uint8_t  tx_sched_wrr_be[TX_SCHED_WRR_PARAM_STRING_LENGTH];
+   /* Tuning TX sched parameters for BK (skip credit limit credit disc) */
+   uint8_t  tx_sched_wrr_bk[TX_SCHED_WRR_PARAM_STRING_LENGTH];
 
    /* parameter to control GTX */
    uint32_t                    tgt_gtx_usr_cfg;
-   bool                        sap_restrt_ch_avoid;
-   uint32_t                    rx_wakelock_timeout;
+   bool                        sap_internal_restart;
+   bool                        bug_on_reinit_failure;
+   /* parameter to force sap into 11n */
+   bool                        sap_force_11n_for_11ac;
+   uint8_t                     sap_max_inactivity_override;
    bool                        active_mode_offload;
+   /* parameter for indicating sifs burst duration to fw */
+   uint8_t                     sifs_burst_duration;
+
+   bool bpf_packet_filter_enable;
 };
 
 typedef struct hdd_config hdd_config_t;
