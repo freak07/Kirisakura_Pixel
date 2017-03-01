@@ -470,8 +470,10 @@ static struct kobj_type sugov_tunables_ktype = {
 };
 
 /********************** cpufreq governor interface *********************/
-
-static struct cpufreq_governor schedutil_gov;
+#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+static
+#endif
+struct cpufreq_governor cpufreq_gov_schedutil;
 
 static struct sugov_policy *sugov_policy_alloc(struct cpufreq_policy *policy)
 {
@@ -611,6 +613,7 @@ static int sugov_init(struct cpufreq_policy *policy)
 {
 	struct sugov_policy *sg_policy;
 	struct sugov_tunables *tunables;
+	unsigned int lat;
 	int ret = 0;
 
 	/* State should be equivalent to EXIT */
@@ -644,15 +647,21 @@ static int sugov_init(struct cpufreq_policy *policy)
 		ret = -ENOMEM;
 		goto stop_kthread;
 	}
-	
-	get_tunables_data(tunables, policy);
-	
+
+	tunables->up_rate_limit_us = LATENCY_MULTIPLIER;
+	tunables->down_rate_limit_us = LATENCY_MULTIPLIER;
+	lat = policy->cpuinfo.transition_latency / NSEC_PER_USEC;
+	if (lat) {
+		tunables->up_rate_limit_us *= lat;
+		tunables->down_rate_limit_us *= lat;
+	}
+
 	policy->governor_data = sg_policy;
 	sg_policy->tunables = tunables;
 
 	ret = kobject_init_and_add(&tunables->attr_set.kobj, &sugov_tunables_ktype,
 				   get_governor_parent_kobj(policy), "%s",
-				   schedutil_gov.name);
+				   cpufreq_gov_schedutil.name);
 	if (ret)
 		goto fail;
 
@@ -694,7 +703,7 @@ static int sugov_exit(struct cpufreq_policy *policy)
 		sugov_tunables_free(tunables);
 
 	mutex_unlock(&global_tunables_lock);
-	
+
 	sugov_kthread_stop(sg_policy);
 	sugov_policy_free(sg_policy);
 
@@ -788,7 +797,10 @@ static int cpufreq_schedutil_cb(struct cpufreq_policy *policy,
 	}
 }
 
-static struct cpufreq_governor schedutil_gov = {
+#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+static
+#endif
+struct cpufreq_governor cpufreq_gov_schedutil = {
 	.name = "schedutil",
 	.governor = cpufreq_schedutil_cb,
 	.owner = THIS_MODULE,
@@ -796,7 +808,7 @@ static struct cpufreq_governor schedutil_gov = {
 
 static int __init sugov_register(void)
 {
-	return cpufreq_register_governor(&schedutil_gov);
+	return cpufreq_register_governor(&cpufreq_gov_schedutil);
 }
 
 static void __exit sugov_module_exit(void)
