@@ -10203,9 +10203,8 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
      serialized by the kernel rtnl_lock and hence does not need to be
      reentrant */
   static tSirPNOScanReq pnoRequest;
-  char *ptr, *data;
+  char *ptr;
   v_U8_t i,j, ucParams, ucMode;
-  size_t len;
   /*- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
   VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
@@ -10228,10 +10227,10 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
     for each network:
     <ssid_len> <ssid> <authentication> <encryption>
     <ch_num> <channel_list optional> <bcast_type> <rssi_threshold>
-    <fast_scan_period> <fast_scan_cycles> <slow_scan_period> <pno_mode>
+    <scan_timers> <scan_time> <scan_repeat> <scan_time> <scan_repeat>
 
     e.g:
-    1 2 4 test 0 0 3 1 6 11 2 40 5 test2 4 4 6 1 2 3 4 5 6 1 0 2 5 3 0
+    1 2 4 test 0 0 3 1 6 11 2 40 5 test2 4 4 6 1 2 3 4 5 6 1 0 2 5 2 300 0
 
     this translates into:
     -----------------------------
@@ -10249,24 +10248,12 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
 
     scan every 5 seconds 2 times, scan every 300 seconds until stopped
   -----------------------------------------------------------------------*/
+  ptr = extra + nOffset;
 
-  /* making sure argument string ends with '\0' */
-  len = (wrqu->data.length-nOffset) + 1;
-  data = vos_mem_malloc(len);
-  if (NULL == data) {
-      VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
-                FL("fail to allocate memory %zu"), len);
-      return -EINVAL;
-  }
-  vos_mem_zero(data, len);
-  vos_mem_copy(data, &extra[nOffset], (len-1));
-  ptr = data;
-
-  if (1 != sscanf(ptr," %hhu%n", &(pnoRequest.enable), &nOffset))
+  if (1 != sscanf(ptr,"%hhu%n", &(pnoRequest.enable), &nOffset))
   {
       VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                 "PNO enable input is not valid %s",ptr);
-      vos_mem_free(data);
       return -EINVAL;
   }
 
@@ -10277,17 +10264,15 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
     sme_SetPreferredNetworkList(WLAN_HDD_GET_HAL_CTX(pAdapter), &pnoRequest,
                                 pAdapter->sessionId,
                                 found_pref_network_cb, pAdapter);
-    vos_mem_free(data);
     return 0;
   }
 
   ptr += nOffset;
 
-  if (1 != sscanf(ptr," %hhu %n", &(pnoRequest.ucNetworksCount), &nOffset))
+  if (1 != sscanf(ptr,"%hhu %n", &(pnoRequest.ucNetworksCount), &nOffset))
   {
       VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                 "PNO count input not valid %s",ptr);
-      vos_mem_free(data);
       return -EINVAL;
   }
 
@@ -10303,7 +10288,6 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
       ( pnoRequest.ucNetworksCount > SIR_PNO_MAX_SUPP_NETWORKS ))
   {
       VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_WARN, "Network input is not correct");
-      vos_mem_free(data);
       return -EINVAL;
   }
 
@@ -10314,14 +10298,13 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
 
     pnoRequest.aNetworks[i].ssId.length = 0;
 
-    ucParams = sscanf(ptr," %hhu %n",
+    ucParams = sscanf(ptr,"%hhu %n",
                       &(pnoRequest.aNetworks[i].ssId.length),&nOffset);
 
     if (1 != ucParams)
     {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                   "PNO ssid length input is not valid %s",ptr);
-        vos_mem_free(data);
         return -EINVAL;
     }
 
@@ -10331,7 +10314,6 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
       VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                 "SSID Len %d is not correct for network %d",
                 pnoRequest.aNetworks[i].ssId.length, i);
-      vos_mem_free(data);
       return -EINVAL;
     }
 
@@ -10342,7 +10324,7 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
            pnoRequest.aNetworks[i].ssId.length);
     ptr += pnoRequest.aNetworks[i].ssId.length;
 
-    ucParams = sscanf(ptr," %u %u %hhu %n",
+    ucParams = sscanf(ptr,"%u %u %hhu %n",
                       &(pnoRequest.aNetworks[i].authentication),
                       &(pnoRequest.aNetworks[i].encryption),
                       &(pnoRequest.aNetworks[i].ucChannelCount),
@@ -10352,7 +10334,6 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
     {
       VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_WARN,
                 "Incorrect cmd %s",ptr);
-      vos_mem_free(data);
       return -EINVAL;
     }
 
@@ -10380,7 +10361,6 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
     {
       VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_WARN,
                 "Incorrect number of channels");
-      vos_mem_free(data);
       return -EINVAL;
     }
 
@@ -10388,42 +10368,27 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
     {
       for ( j = 0; j < pnoRequest.aNetworks[i].ucChannelCount; j++)
       {
-           if (1 != sscanf(ptr," %hhu %n",
+           if (1 != sscanf(ptr,"%hhu %n",
                            &(pnoRequest.aNetworks[i].aChannels[j]),
                            &nOffset))
             {    VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                            "PNO network channel input is not valid %s",ptr);
-               vos_mem_free(data);
                return -EINVAL;
-            }
-            if (!IS_CHANNEL_VALID(pnoRequest.aNetworks[i].aChannels[j])) {
-                VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
-                          FL("invalid channel: %hhu"),
-                             pnoRequest.aNetworks[i].aChannels[j]);
-                vos_mem_free(data);
-                return -EINVAL;
             }
             /*Advance to next channel number*/
             ptr += nOffset;
       }
     }
 
-    if (1 != sscanf(ptr," %u %n",
+    if (1 != sscanf(ptr,"%u %n",
                     &(pnoRequest.aNetworks[i].bcastNetwType),
                     &nOffset))
     {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                   "PNO broadcast network type input is not valid %s",ptr);
-        vos_mem_free(data);
         return -EINVAL;
     }
-    if (pnoRequest.aNetworks[i].bcastNetwType > 2) {
-        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
-                  FL("invalid bcast nw type: %u"),
-                      pnoRequest.aNetworks[i].bcastNetwType);
-        vos_mem_free(data);
-        return -EINVAL;
-    }
+
     VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
             "PNO bcastNetwType %d offset %d",
             pnoRequest.aNetworks[i].bcastNetwType,
@@ -10431,13 +10396,12 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
 
     /*Advance to rssi Threshold*/
     ptr += nOffset;
-    if (1 != sscanf(ptr," %d %n",
+    if (1 != sscanf(ptr,"%d %n",
                     &(pnoRequest.aNetworks[i].rssiThreshold),
                     &nOffset))
     {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                   "PNO rssi threshold input is not valid %s",ptr);
-        vos_mem_free(data);
         return -EINVAL;
     }
     VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
@@ -10454,8 +10418,6 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
   /*for LA we just expose suspend option*/
   if (( 1 != ucParams )||(  ucMode >= SIR_PNO_MODE_MAX ))
   {
-     VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
-                "fail to get valid pno mode %hhu %hhu", ucParams, ucMode);
      pnoRequest.modePNO = SIR_PNO_MODE_ON_SUSPEND;
   }
 
@@ -10463,7 +10425,6 @@ int iw_set_pno(struct net_device *dev, struct iw_request_info *info,
                                 pAdapter->sessionId,
                                 found_pref_network_cb, pAdapter);
 
-  vos_mem_free(data);
   return 0;
 }/*iw_set_pno*/
 
