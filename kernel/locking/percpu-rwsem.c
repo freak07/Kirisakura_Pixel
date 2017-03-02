@@ -19,7 +19,7 @@ int __percpu_init_rwsem(struct percpu_rw_semaphore *brw,
 	__init_rwsem(&brw->rw_sem, name, rwsem_key);
 	atomic_set(&brw->write_ctr, 0);
 	atomic_set(&brw->slow_read_ctr, 0);
-	init_waitqueue_head(&brw->write_waitq);
+	init_swait_queue_head(&brw->write_waitq);
 	return 0;
 }
 
@@ -97,7 +97,7 @@ void percpu_up_read(struct percpu_rw_semaphore *brw)
 
 	/* false-positive is possible but harmless */
 	if (atomic_dec_and_test(&brw->slow_read_ctr))
-		wake_up_all(&brw->write_waitq);
+		swake_up_all(&brw->write_waitq);
 }
 
 static int clear_fast_ctr(struct percpu_rw_semaphore *brw)
@@ -148,7 +148,7 @@ void percpu_down_write(struct percpu_rw_semaphore *brw)
 	atomic_add(clear_fast_ctr(brw), &brw->slow_read_ctr);
 
 	/* wait for all readers to complete their percpu_up_read() */
-	wait_event(brw->write_waitq, !atomic_read(&brw->slow_read_ctr));
+	swait_event(brw->write_waitq, !atomic_read(&brw->slow_read_ctr));
 }
 
 void percpu_up_write(struct percpu_rw_semaphore *brw)
