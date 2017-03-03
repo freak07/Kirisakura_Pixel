@@ -33,14 +33,14 @@
 
 #define EXITING_TASK_MARKER	0xdeaddead
 
-static __read_mostly unsigned int walt_ravg_hist_size = 5;
+static __read_mostly unsigned int walt_ravg_hist_size = 3;
 static __read_mostly unsigned int walt_window_stats_policy =
 	WINDOW_STATS_MAX_RECENT_AVG;
 static __read_mostly unsigned int walt_account_wait_time = 1;
 static __read_mostly unsigned int walt_freq_account_wait_time = 0;
-static __read_mostly unsigned int walt_io_is_busy = 0;
+static __read_mostly unsigned int walt_io_is_busy = 1;
 
-unsigned int sysctl_sched_walt_init_task_load_pct = 15;
+unsigned int sysctl_sched_walt_init_task_load_pct = 25;
 
 /* 1 -> use PELT based load stats, 0 -> use window-based load stats */
 unsigned int __read_mostly walt_disabled = 0;
@@ -69,13 +69,13 @@ static unsigned int max_possible_capacity = 1024;
 static cpumask_t mpc_mask = CPU_MASK_ALL;
 
 /* Window size (in ns) */
-__read_mostly unsigned int walt_ravg_window = 20000000;
+__read_mostly unsigned int walt_ravg_window = 2000000;
 
 /* Min window size (in ns) = 10ms */
-#define MIN_SCHED_RAVG_WINDOW 10000000
+#define MIN_SCHED_RAVG_WINDOW 5000000
 
 /* Max window size (in ns) = 1s */
-#define MAX_SCHED_RAVG_WINDOW 1000000000
+#define MAX_SCHED_RAVG_WINDOW 500000000
 
 static unsigned int sync_cpu;
 static ktime_t ktime_last;
