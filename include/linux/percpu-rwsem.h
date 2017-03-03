@@ -29,6 +29,7 @@ extern void percpu_free_rwsem(struct percpu_rw_semaphore *);
 ({								\
 	static struct lock_class_key rwsem_key;			\
 	__percpu_init_rwsem(brw, #brw, &rwsem_key);		\
+	.writer = __SWAIT_QUEUE_HEAD_INITIALIZER(name.writer), \
 })
 
 #endif
