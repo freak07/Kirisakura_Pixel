@@ -4,7 +4,7 @@
 #include <linux/atomic.h>
 #include <linux/rwsem.h>
 #include <linux/percpu.h>
-#include <linux/wait.h>
+#include <linux/swait.h>
 #include <linux/lockdep.h>
 
 struct percpu_rw_semaphore {
@@ -12,7 +12,7 @@ struct percpu_rw_semaphore {
 	atomic_t		write_ctr;
 	struct rw_semaphore	rw_sem;
 	atomic_t		slow_read_ctr;
-	wait_queue_head_t	write_waitq;
+	struct swait_queue_head	writer;
 };
 
 extern void percpu_down_read(struct percpu_rw_semaphore *);
@@ -29,6 +29,7 @@ extern void percpu_free_rwsem(struct percpu_rw_semaphore *);
 ({								\
 	static struct lock_class_key rwsem_key;			\
 	__percpu_init_rwsem(brw, #brw, &rwsem_key);		\
+	.writer = __SWAIT_QUEUE_HEAD_INITIALIZER(name.writer), \
 })
 
 #endif
