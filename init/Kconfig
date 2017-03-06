@@ -405,7 +405,7 @@ config SCHED_WALT
 config SCHED_WALT_DEFAULT
 	bool "Use window based load tracking for cpu and task util"
 	depends on SCHED_WALT
-	default N
+	default Y
 	help
 	  If Y, use WALT signals for cpu and task utilization in the
 	  scheduler. This guides task placement and capacity selection for
