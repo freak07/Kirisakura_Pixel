@@ -3283,8 +3283,7 @@ int register_cpu_cycle_counter_cb(struct cpu_cycle_counter_cb *cb);
 
 #ifdef CONFIG_CPU_FREQ
 struct update_util_data {
-       void (*func)(struct update_util_data *data, u64 time, unsigned int flags);
-       int cpu;
+	void (*func)(struct update_util_data *data, u64 time, unsigned int flags);
 };
 
 void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,

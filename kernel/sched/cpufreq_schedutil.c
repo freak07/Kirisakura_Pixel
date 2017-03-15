@@ -122,38 +122,32 @@ static bool sugov_up_down_rate_limit(struct sugov_policy *sg_policy, u64 time,
 	return false;
 }
 
-static void sugov_fast_switch(struct cpufreq_policy *policy,
-			      unsigned int next_freq)
-{
-	next_freq = cpufreq_driver_fast_switch(policy, next_freq);
-	if (next_freq == CPUFREQ_ENTRY_INVALID)
-		return;
-
-	policy->cur = next_freq;
-	trace_cpu_frequency(next_freq, policy->cpu);
-}
-
 static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
-				int cpu, bool remote, unsigned int next_freq)
+				unsigned int next_freq)
 {
 	struct cpufreq_policy *policy = sg_policy->policy;
 
 	if (sugov_up_down_rate_limit(sg_policy, time, next_freq))
 		return;
 
-	if (policy->fast_switch_enabled && !remote) {
+	if (policy->fast_switch_enabled) {
 		if (sg_policy->next_freq == next_freq) {
-			trace_cpu_frequency(policy->cur, policy->cpu);
+			trace_cpu_frequency(policy->cur, smp_processor_id());
 			return;
 		}
 		sg_policy->next_freq = next_freq;
 		sg_policy->last_freq_update_time = time;
-		sugov_fast_switch(policy, next_freq);
+		next_freq = cpufreq_driver_fast_switch(policy, next_freq);
+		if (next_freq == CPUFREQ_ENTRY_INVALID)
+			return;
+
+		policy->cur = next_freq;
+		trace_cpu_frequency(next_freq, smp_processor_id());
 	} else if (sg_policy->next_freq != next_freq) {
 		sg_policy->next_freq = next_freq;
 		sg_policy->last_freq_update_time = time;
 		sg_policy->work_in_progress = true;
-		irq_work_queue_on(&sg_policy->irq_work, cpu);
+		irq_work_queue(&sg_policy->irq_work);
 	}
 }
 
@@ -194,9 +188,9 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	return cpufreq_driver_resolve_freq(policy, freq);
 }
 
-static void sugov_get_util(unsigned long *util, unsigned long *max, int cpu,
-                            u64 time)
+static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 {
+	int cpu = smp_processor_id();
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long max_cap, rt;
 	s64 delta;
@@ -256,20 +250,6 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util, max;
 	unsigned int next_f;
-	int cpu, this_cpu = smp_processor_id();
-	bool remote;
-
-	if (policy->dvfs_possible_from_any_cpu) {
-		/*
-		 * Avoid sending IPI to 'hook->cpu' if this CPU can change
-		 * frequency on its behalf.
-		 */
-		remote = false;
-		cpu = this_cpu;
-	} else {
-		cpu = hook->cpu;
-		remote = this_cpu != hook->cpu;
-	}
 
 	sugov_set_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
@@ -280,11 +260,11 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	if (flags & SCHED_CPUFREQ_DL) {
 		next_f = policy->cpuinfo.max_freq;
 	} else {
-		sugov_get_util(&util, &max, hook->cpu, time);
+		sugov_get_util(&util, &max, time);
 		sugov_iowait_boost(sg_cpu, &util, &max);
 		next_f = get_next_freq(sg_policy, util, max);
 	}
-	sugov_update_commit(sg_policy, time, cpu, remote, next_f);
+	sugov_update_commit(sg_policy, time, next_f);
 }
 
 static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu)
@@ -334,28 +314,12 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
-	struct cpufreq_policy *policy = sg_policy->policy;
-	int this_cpu = smp_processor_id();
-	int cpu = smp_processor_id();
+	unsigned int cpu = smp_processor_id();
 	struct task_struct *curr = cpu_curr(cpu);
 	unsigned long util, max;
 	unsigned int next_f;
-	bool remote;
 
-	if (policy->dvfs_possible_from_any_cpu ||
-	    cpumask_test_cpu(this_cpu, policy->cpus)) {
-		/*
-		 * Avoid sending IPI to 'hook->cpu' if this CPU can change
-		 * frequency on its behalf.
-		 */
-		remote = false;
-		cpu = this_cpu;
-	} else {
-		cpu = hook->cpu;
-		remote = this_cpu != hook->cpu;
-	}
-
-	sugov_get_util(&util, &max, hook->cpu, time);
+	sugov_get_util(&util, &max, time);
 
 	raw_spin_lock(&sg_policy->update_lock);
 
@@ -378,7 +342,7 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 
 	if (sugov_should_update_freq(sg_policy, time)) {
 		next_f = sugov_next_freq_shared(sg_cpu);
-		sugov_update_commit(sg_policy, time, cpu, remote, next_f);
+		sugov_update_commit(sg_policy, time, next_f);
 	}
 
 done:
@@ -399,15 +363,9 @@ static void sugov_work(struct kthread_work *work)
 
 static void sugov_irq_work(struct irq_work *irq_work)
 {
-	struct sugov_policy *sg_policy = container_of(irq_work, struct
-						      sugov_policy, irq_work);
-	struct cpufreq_policy *policy = sg_policy->policy;
+	struct sugov_policy *sg_policy;
 
-	if (policy->fast_switch_enabled) {
-		sugov_fast_switch(policy, sg_policy->next_freq);
-		sg_policy->work_in_progress = false;
-		return;
-	}
+	sg_policy = container_of(irq_work, struct sugov_policy, irq_work);
 
 	/*
 	 * For Real Time and Deadline tasks, schedutil governor shoots the
