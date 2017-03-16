@@ -824,7 +824,6 @@ static void bfq_pd_offline(struct blkcg_gq *blkg)
 
 	__bfq_deactivate_entity(entity, false);
 	bfq_put_async_queues(bfqd, bfqg);
-	BUG_ON(entity->tree);
 
 	/*
 	 * @blkg is going offline and will be ignored by
