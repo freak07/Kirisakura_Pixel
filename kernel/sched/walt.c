@@ -33,14 +33,14 @@
 
 #define EXITING_TASK_MARKER	0xdeaddead
 
-static __read_mostly unsigned int walt_ravg_hist_size = 7;
+static __read_mostly unsigned int walt_ravg_hist_size = 5;
 static __read_mostly unsigned int walt_window_stats_policy =
-	WINDOW_STATS_AVG;
+	WINDOW_STATS_MAX_RECENT_AVG;
 static __read_mostly unsigned int walt_account_wait_time = 1;
-static __read_mostly unsigned int walt_freq_account_wait_time = 1;
+static __read_mostly unsigned int walt_freq_account_wait_time = 0;
 static __read_mostly unsigned int walt_io_is_busy =1;
 
-unsigned int sysctl_sched_walt_init_task_load_pct = 10;
+unsigned int sysctl_sched_walt_init_task_load_pct = 25;
 
 /* 1 -> use PELT based load stats, 0 -> use window-based load stats */
 unsigned int __read_mostly walt_disabled = 0;
