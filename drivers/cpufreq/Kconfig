@@ -191,7 +191,6 @@ config CPU_FREQ_DEFAULT_GOV_ENERGY
 	  have a look at the help section of that governor. The fallback
 	  governor will be 'performance'.
 endchoice
-endchoice
 
 config CPU_FREQ_GOV_PERFORMANCE
 	tristate "'performance' governor"
