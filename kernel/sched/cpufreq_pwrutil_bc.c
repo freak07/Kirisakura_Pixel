@@ -198,7 +198,7 @@ static unsigned int get_next_freq(struct bcgov_cpu *sg_cpu, unsigned long util,
 	* draw a lot of power during light CPU load.
 	*/
 	
-	freq = freq * util / max;
+	freq = freq * (util + ((util * 5) / 100)) / max;
 
 	if (freq == sg_cpu->cached_raw_freq && sg_policy->next_freq != UINT_MAX)
 		return sg_policy->next_freq;
