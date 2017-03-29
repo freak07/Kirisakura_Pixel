@@ -183,7 +183,7 @@ static unsigned int get_next_freq(struct bcgov_cpu *sg_cpu, unsigned long util,
 {
 	struct bcgov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
-	unsigned int freq = policy->cpuinfo.max_freq;
+	unsigned int freq = policy->max;
 
 	/*
 	* We are only going to use max freq for the big cluster
