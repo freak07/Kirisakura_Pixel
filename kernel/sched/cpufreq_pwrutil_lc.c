@@ -40,8 +40,8 @@ unsigned long boosted_cpu_util(int cpu);
 #define LOAD1_CAP					1324800
 /* Frequency cap for target_load2 in KHz */
 #define LOAD2_CAP					1401600
-#define TARGET_LOAD_1				50
-#define TARGET_LOAD_2				75
+#define TARGET_LOAD_1				25
+#define TARGET_LOAD_2				50
 
 #define LCGOV_KTHREAD_PRIORITY		25
 
