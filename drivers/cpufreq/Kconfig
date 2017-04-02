@@ -199,7 +199,7 @@ config CPU_FREQ_DEFAULT_GOV_PWRUTIL
 	help
 	  Use the 'pwrutil' CPUFreq governor by default. If unsure,
 	  have a look at the help section of that governor. The fallback
-governor will be 'performance'. 
+	  governor will be 'performance'. 
 endchoice
 
 config CPU_FREQ_GOV_PERFORMANCE
@@ -425,7 +425,7 @@ config CPU_FREQ_GOV_PWRUTIL
 	  frequency tipping point is at utilization/capacity equal to 80% in
 	  both cases.
 
-If in doubt, say N.
+	  If in doubt, say N.
 
 comment "CPU frequency scaling drivers"
 
