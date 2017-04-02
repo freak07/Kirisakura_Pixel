@@ -32,7 +32,7 @@ unsigned long boosted_cpu_util(int cpu);
 #define cpufreq_enable_fast_switch(x)
 #define cpufreq_disable_fast_switch(x)
 #define LATENCY_MULTIPLIER			(1000)
-#define UTILBOOST						20
+#define UTILBOOST						30
 #define UTILBOOST_BC					5
 #define PWRGOV_KTHREAD_PRIORITY	25
 
@@ -563,7 +563,7 @@ static ssize_t utilboost_store(struct gov_attr_set *attr_set,
 	if (kstrtouint(buf, 10, &value))
 		return -EINVAL;
 
-	value = min(max(0,value), 30);
+	value = min(max(0,value), 50);
 	
 	
 	if (value == tunables->utilboost)
