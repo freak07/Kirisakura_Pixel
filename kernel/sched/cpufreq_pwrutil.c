@@ -6,8 +6,6 @@
  * 
  * Copyright (C) 2017, Team Helix
  * Author: ZeroInfinity @ XDA-Developers.com <infinitezero345@gmail.com>
- * 
- * pwrutil for the BIG CLUSTER.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -34,18 +32,21 @@ unsigned long boosted_cpu_util(int cpu);
 #define cpufreq_enable_fast_switch(x)
 #define cpufreq_disable_fast_switch(x)
 #define LATENCY_MULTIPLIER			(1000)
-#define BCGOV_KTHREAD_PRIORITY	25
+#define UTILBOOST						20
+#define UTILBOOST_BC					5
+#define PWRGOV_KTHREAD_PRIORITY	25
 
-struct bcgov_tunables {
+struct pwrgov_tunables {
 	struct gov_attr_set attr_set;
 	unsigned int up_rate_limit_us;
 	unsigned int down_rate_limit_us;
+	unsigned int utilboost;
 };
 
-struct bcgov_policy {
+struct pwrgov_policy {
 	struct cpufreq_policy *policy;
 
-	struct bcgov_tunables *tunables;
+	struct pwrgov_tunables *tunables;
 	struct list_head tunables_hook;
 
 	raw_spinlock_t update_lock;  /* For shared policies */
@@ -66,9 +67,9 @@ struct bcgov_policy {
 	bool need_freq_update;
 };
 
-struct bcgov_cpu {
+struct pwrgov_cpu {
 	struct update_util_data update_util;
-	struct bcgov_policy *sg_policy;
+	struct pwrgov_policy *sg_policy;
 
 	unsigned int cached_raw_freq;
 	unsigned long iowait_boost;
@@ -81,12 +82,12 @@ struct bcgov_cpu {
 	unsigned int flags;
 };
 
-static DEFINE_PER_CPU(struct bcgov_cpu, bcgov_cpu);
-static DEFINE_PER_CPU(struct bcgov_tunables, cached_tunables);
+static DEFINE_PER_CPU(struct pwrgov_cpu, pwrgov_cpu);
+static DEFINE_PER_CPU(struct pwrgov_tunables, cached_tunables);
 
 /************************ Governor internals ***********************/
 
-static bool bcgov_should_update_freq(struct bcgov_policy *sg_policy, u64 time)
+static bool pwrgov_should_update_freq(struct pwrgov_policy *sg_policy, u64 time)
 {
 	s64 delta_ns;
 
@@ -109,7 +110,7 @@ static bool bcgov_should_update_freq(struct bcgov_policy *sg_policy, u64 time)
 	return delta_ns >= sg_policy->min_rate_limit_ns;
 }
 
-static bool bcgov_up_down_rate_limit(struct bcgov_policy *sg_policy, u64 time,
+static bool pwrgov_up_down_rate_limit(struct pwrgov_policy *sg_policy, u64 time,
 				     unsigned int next_freq)
 {
 	s64 delta_ns;
@@ -127,12 +128,12 @@ static bool bcgov_up_down_rate_limit(struct bcgov_policy *sg_policy, u64 time,
 	return false;
 }
 
-static void bcgov_update_commit(struct bcgov_policy *sg_policy, u64 time,
+static void pwrgov_update_commit(struct pwrgov_policy *sg_policy, u64 time,
 				unsigned int next_freq)
 {
 	struct cpufreq_policy *policy = sg_policy->policy;
 
-	if (bcgov_up_down_rate_limit(sg_policy, time, next_freq))
+	if (pwrgov_up_down_rate_limit(sg_policy, time, next_freq))
 		return;
 
 	sg_policy->last_freq_update_time = time;
@@ -158,7 +159,7 @@ static void bcgov_update_commit(struct bcgov_policy *sg_policy, u64 time,
 
 /**
  * get_next_freq - Compute a new frequency for a given cpufreq policy.
- * @sg_cpu: pwrutil_bc cpu object to compute the new frequency for.
+ * @sg_cpu: pwrutil cpu object to compute the new frequency for.
  * @util: Current CPU utilization.
  * @max: CPU capacity.
  *
@@ -178,27 +179,27 @@ static void bcgov_update_commit(struct bcgov_policy *sg_policy, u64 time,
  * next_freq (as calculated above) is returned, subject to policy min/max and
  * cpufreq driver limitations.
  */
-static unsigned int get_next_freq(struct bcgov_cpu *sg_cpu, unsigned long util,
+static unsigned int get_next_freq(struct pwrgov_cpu *sg_cpu, unsigned long util,
 				  unsigned long max)
 {
-	struct bcgov_policy *sg_policy = sg_cpu->sg_policy;
+	struct pwrgov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
+	struct pwrgov_tunables *tunables = sg_policy->tunables;
 	unsigned int freq = policy->max;
 
 	/*
-	* We are only going to use max freq for the big cluster
-	* as any kind of capping will make the governor choose way
-	* too low frequencies. Capping is not suitable for the
-	* freq * util / max equation.
-	* 
-	* This equation is much more efficient for the big cluster.
+	* This equation is much more efficient.
 	* On very high loads from 75% - 100% it will choose high frequencies
 	* up to max frequency available. On lower frequencies from 50% and
 	* below, the governor will select much lower frequencies so it won't
 	* draw a lot of power during light CPU load.
+	* 
+	* We can use the tunable called "utilboost" to tell the governor
+	* that the load will be higher than perceived which will
+	* also boost the next frequency selection.
 	*/
 	
-	freq = freq * (util + ((util * 5) / 100)) / max;
+	freq = freq * (util + ((util * tunables->utilboost) / 100)) / max;
 
 	if (freq == sg_cpu->cached_raw_freq && sg_policy->next_freq != UINT_MAX)
 		return sg_policy->next_freq;
@@ -206,7 +207,7 @@ static unsigned int get_next_freq(struct bcgov_cpu *sg_cpu, unsigned long util,
 	return cpufreq_driver_resolve_freq(policy, freq);
 }
 
-static void bcgov_get_util(unsigned long *util, unsigned long *max, u64 time)
+static void pwrgov_get_util(unsigned long *util, unsigned long *max, u64 time)
 {
 	int cpu = smp_processor_id();
 	struct rq *rq = cpu_rq(cpu);
@@ -230,7 +231,7 @@ static void bcgov_get_util(unsigned long *util, unsigned long *max, u64 time)
 	*max = max_cap;
 }
 
-static void bcgov_set_iowait_boost(struct bcgov_cpu *sg_cpu, u64 time,
+static void pwrgov_set_iowait_boost(struct pwrgov_cpu *sg_cpu, u64 time,
 				   unsigned int flags)
 {
 	if (flags & SCHED_CPUFREQ_IOWAIT) {
@@ -244,7 +245,7 @@ static void bcgov_set_iowait_boost(struct bcgov_cpu *sg_cpu, u64 time,
 	}
 }
 
-static void bcgov_iowait_boost(struct bcgov_cpu *sg_cpu, unsigned long *util,
+static void pwrgov_iowait_boost(struct pwrgov_cpu *sg_cpu, unsigned long *util,
 			       unsigned long *max)
 {
 	unsigned long boost_util = sg_cpu->iowait_boost;
@@ -308,19 +309,19 @@ void cap_clamp_compose(unsigned int *cap_min, unsigned int *cap_max,
 
 #endif /* CONFIG_CAPACITY_CLAMPING */
 
-static void bcgov_update_single(struct update_util_data *hook, u64 time,
+static void pwrgov_update_single(struct update_util_data *hook, u64 time,
 				unsigned int flags)
 {
-	struct bcgov_cpu *sg_cpu = container_of(hook, struct bcgov_cpu, update_util);
-	struct bcgov_policy *sg_policy = sg_cpu->sg_policy;
+	struct pwrgov_cpu *sg_cpu = container_of(hook, struct pwrgov_cpu, update_util);
+	struct pwrgov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned long util, max;
 	unsigned int next_f;
 
-	bcgov_set_iowait_boost(sg_cpu, time, flags);
+	pwrgov_set_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
 
-	if (!bcgov_should_update_freq(sg_policy, time))
+	if (!pwrgov_should_update_freq(sg_policy, time))
 		return;
 
 	if (flags & SCHED_CPUFREQ_DL) {
@@ -328,32 +329,32 @@ static void bcgov_update_single(struct update_util_data *hook, u64 time,
 					  SCHED_CAPACITY_SCALE);
 		next_f = get_next_freq(sg_cpu, util, policy->cpuinfo.max_freq);
 	} else {
-		bcgov_get_util(&util, &max, time);
-		bcgov_iowait_boost(sg_cpu, &util, &max);
+		pwrgov_get_util(&util, &max, time);
+		pwrgov_iowait_boost(sg_cpu, &util, &max);
 		util = cap_clamp_cpu_util(smp_processor_id(), util);
 		next_f = get_next_freq(sg_cpu, util, max);
 	}
-	bcgov_update_commit(sg_policy, time, next_f);
+	pwrgov_update_commit(sg_policy, time, next_f);
 }
 
-static unsigned int bcgov_next_freq_shared(struct bcgov_cpu *sg_cpu,
+static unsigned int pwrgov_next_freq_shared(struct pwrgov_cpu *sg_cpu,
 					   unsigned long util, unsigned long max,
 					   unsigned int flags)
 {
-	struct bcgov_policy *sg_policy = sg_cpu->sg_policy;
+	struct pwrgov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
 	u64 last_freq_update_time = sg_policy->last_freq_update_time;
 	unsigned int cap_max = SCHED_CAPACITY_SCALE;
 	unsigned int cap_min = 0;
 	unsigned int j;
 
-	bcgov_iowait_boost(sg_cpu, &util, &max);
+	pwrgov_iowait_boost(sg_cpu, &util, &max);
 
 	/* Initialize clamping range based on caller CPU constraints */
 	cap_clamp_cpu_range(smp_processor_id(), &cap_min, &cap_max);
 
 	for_each_cpu(j, policy->cpus) {
-		struct bcgov_cpu *j_sg_cpu;
+		struct pwrgov_cpu *j_sg_cpu;
 		unsigned long j_util, j_max;
 		unsigned int j_cap_max, j_cap_min;
 		s64 delta_ns;
@@ -361,7 +362,7 @@ static unsigned int bcgov_next_freq_shared(struct bcgov_cpu *sg_cpu,
 		if (j == smp_processor_id())
 			continue;
 
-		j_sg_cpu = &per_cpu(bcgov_cpu, j);
+		j_sg_cpu = &per_cpu(pwrgov_cpu, j);
 		/*
 		 * If the CPU utilization was last updated before the previous
 		 * frequency update and the time elapsed between the last update
@@ -384,7 +385,7 @@ static unsigned int bcgov_next_freq_shared(struct bcgov_cpu *sg_cpu,
 			max = j_max;
 		}
 
-		bcgov_iowait_boost(j_sg_cpu, &util, &max);
+		pwrgov_iowait_boost(j_sg_cpu, &util, &max);
 
 		/*
 		 * Update clamping range based on this CPU constraints, but
@@ -403,15 +404,15 @@ static unsigned int bcgov_next_freq_shared(struct bcgov_cpu *sg_cpu,
 	return get_next_freq(sg_cpu, util, max);
 }
 
-static void bcgov_update_shared(struct update_util_data *hook, u64 time,
+static void pwrgov_update_shared(struct update_util_data *hook, u64 time,
 				unsigned int flags)
 {
-	struct bcgov_cpu *sg_cpu = container_of(hook, struct bcgov_cpu, update_util);
-	struct bcgov_policy *sg_policy = sg_cpu->sg_policy;
+	struct pwrgov_cpu *sg_cpu = container_of(hook, struct pwrgov_cpu, update_util);
+	struct pwrgov_policy *sg_policy = sg_cpu->sg_policy;
 	unsigned long util, max;
 	unsigned int next_f;
 
-	bcgov_get_util(&util, &max, time);
+	pwrgov_get_util(&util, &max, time);
 
 	raw_spin_lock(&sg_policy->update_lock);
 
@@ -425,21 +426,21 @@ static void bcgov_update_shared(struct update_util_data *hook, u64 time,
 	sg_cpu->max = max;
 	sg_cpu->flags = flags;
 
-	bcgov_set_iowait_boost(sg_cpu, time, flags);
+	pwrgov_set_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
 
-	if (bcgov_should_update_freq(sg_policy, time)) {
-		next_f = bcgov_next_freq_shared(sg_cpu, util, max, flags);
-		bcgov_update_commit(sg_policy, time, next_f);
+	if (pwrgov_should_update_freq(sg_policy, time)) {
+		next_f = pwrgov_next_freq_shared(sg_cpu, util, max, flags);
+		pwrgov_update_commit(sg_policy, time, next_f);
 	}
 
 done:
 	raw_spin_unlock(&sg_policy->update_lock);
 }
 
-static void bcgov_work(struct kthread_work *work)
+static void pwrgov_work(struct kthread_work *work)
 {
-	struct bcgov_policy *sg_policy = container_of(work, struct bcgov_policy, work);
+	struct pwrgov_policy *sg_policy = container_of(work, struct pwrgov_policy, work);
 
 	mutex_lock(&sg_policy->work_lock);
 	__cpufreq_driver_target(sg_policy->policy, sg_policy->next_freq,
@@ -449,19 +450,19 @@ static void bcgov_work(struct kthread_work *work)
 	sg_policy->work_in_progress = false;
 }
 
-static void bcgov_irq_work(struct irq_work *irq_work)
+static void pwrgov_irq_work(struct irq_work *irq_work)
 {
-	struct bcgov_policy *sg_policy;
+	struct pwrgov_policy *sg_policy;
 
-	sg_policy = container_of(irq_work, struct bcgov_policy, irq_work);
+	sg_policy = container_of(irq_work, struct pwrgov_policy, irq_work);
 
 	/*
-	 * For Real Time and Deadline tasks, pwrutil_bc governor shoots the
+	 * For Real Time and Deadline tasks, pwrutil governor shoots the
 	 * frequency to maximum. And special care must be taken to ensure that
 	 * this kthread doesn't result in that.
 	 *
 	 * This is (mostly) guaranteed by the work_in_progress flag. The flag is
-	 * updated only at the end of the bcgov_work() and before that pwrutil_bc
+	 * updated only at the end of the pwrgov_work() and before that pwrutil
 	 * rejects all other frequency scaling requests.
 	 *
 	 * Though there is a very rare case where the RT thread yields right
@@ -473,17 +474,17 @@ static void bcgov_irq_work(struct irq_work *irq_work)
 
 /************************** sysfs interface ************************/
 
-static struct bcgov_tunables *global_tunables;
+static struct pwrgov_tunables *global_tunables;
 static DEFINE_MUTEX(global_tunables_lock);
 
-static inline struct bcgov_tunables *to_bcgov_tunables(struct gov_attr_set *attr_set)
+static inline struct pwrgov_tunables *to_pwrgov_tunables(struct gov_attr_set *attr_set)
 {
-	return container_of(attr_set, struct bcgov_tunables, attr_set);
+	return container_of(attr_set, struct pwrgov_tunables, attr_set);
 }
 
 static DEFINE_MUTEX(min_rate_lock);
 
-static void update_min_rate_limit_us(struct bcgov_policy *sg_policy)
+static void update_min_rate_limit_us(struct pwrgov_policy *sg_policy)
 {
 	mutex_lock(&min_rate_lock);
 	sg_policy->min_rate_limit_ns = min(sg_policy->up_rate_delay_ns,
@@ -493,23 +494,31 @@ static void update_min_rate_limit_us(struct bcgov_policy *sg_policy)
 
 static ssize_t up_rate_limit_us_show(struct gov_attr_set *attr_set, char *buf)
 {
-	struct bcgov_tunables *tunables = to_bcgov_tunables(attr_set);
+	struct pwrgov_tunables *tunables = to_pwrgov_tunables(attr_set);
 
 	return sprintf(buf, "%u\n", tunables->up_rate_limit_us);
 }
 
 static ssize_t down_rate_limit_us_show(struct gov_attr_set *attr_set, char *buf)
 {
-	struct bcgov_tunables *tunables = to_bcgov_tunables(attr_set);
+	struct pwrgov_tunables *tunables = to_pwrgov_tunables(attr_set);
 
 	return sprintf(buf, "%u\n", tunables->down_rate_limit_us);
 }
 
+static ssize_t utilboost_show(struct gov_attr_set *attr_set, char *buf)
+{
+	struct pwrgov_tunables *tunables = to_pwrgov_tunables(attr_set);
+
+	return sprintf(buf, "%u\n", tunables->utilboost);
+}
+
+
 static ssize_t up_rate_limit_us_store(struct gov_attr_set *attr_set,
 				      const char *buf, size_t count)
 {
-	struct bcgov_tunables *tunables = to_bcgov_tunables(attr_set);
-	struct bcgov_policy *sg_policy;
+	struct pwrgov_tunables *tunables = to_pwrgov_tunables(attr_set);
+	struct pwrgov_policy *sg_policy;
 	unsigned int rate_limit_us;
 
 	if (kstrtouint(buf, 10, &rate_limit_us))
@@ -528,8 +537,8 @@ static ssize_t up_rate_limit_us_store(struct gov_attr_set *attr_set,
 static ssize_t down_rate_limit_us_store(struct gov_attr_set *attr_set,
 					const char *buf, size_t count)
 {
-	struct bcgov_tunables *tunables = to_bcgov_tunables(attr_set);
-	struct bcgov_policy *sg_policy;
+	struct pwrgov_tunables *tunables = to_pwrgov_tunables(attr_set);
+	struct pwrgov_policy *sg_policy;
 	unsigned int rate_limit_us;
 
 	if (kstrtouint(buf, 10, &rate_limit_us))
@@ -545,48 +554,70 @@ static ssize_t down_rate_limit_us_store(struct gov_attr_set *attr_set,
 	return count;
 }
 
+static ssize_t utilboost_store(struct gov_attr_set *attr_set,
+					const char *buf, size_t count)
+{
+	struct pwrgov_tunables *tunables = to_pwrgov_tunables(attr_set);
+	int value;
+
+	if (kstrtouint(buf, 10, &value))
+		return -EINVAL;
+
+	value = min(max(0,value), 30);
+	
+	
+	if (value == tunables->utilboost)
+		return count;
+		
+	tunables->utilboost = value;
+	
+	return count;
+}
+
 static struct governor_attr up_rate_limit_us = __ATTR_RW(up_rate_limit_us);
 static struct governor_attr down_rate_limit_us = __ATTR_RW(down_rate_limit_us);
+static struct governor_attr utilboost = __ATTR_RW(utilboost);
 
-static struct attribute *bcgov_attributes[] = {
+static struct attribute *pwrgov_attributes[] = {
 	&up_rate_limit_us.attr,
 	&down_rate_limit_us.attr,
+	&utilboost.attr,
 	NULL
 };
 
-static struct kobj_type bcgov_tunables_ktype = {
-	.default_attrs = bcgov_attributes,
+static struct kobj_type pwrgov_tunables_ktype = {
+	.default_attrs = pwrgov_attributes,
 	.sysfs_ops = &governor_sysfs_ops,
 };
 
 /********************** cpufreq governor interface *********************/
-#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_PWRUTIL_BC
+#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_PWRUTIL
 static
 #endif
-struct cpufreq_governor cpufreq_gov_pwrutil_bc;
+struct cpufreq_governor cpufreq_gov_pwrutil;
 
-static struct bcgov_policy *bcgov_policy_alloc(struct cpufreq_policy *policy)
+static struct pwrgov_policy *pwrgov_policy_alloc(struct cpufreq_policy *policy)
 {
-	struct bcgov_policy *sg_policy;
+	struct pwrgov_policy *sg_policy;
 
 	sg_policy = kzalloc(sizeof(*sg_policy), GFP_KERNEL);
 	if (!sg_policy)
 		return NULL;
 
 	sg_policy->policy = policy;
-	init_irq_work(&sg_policy->irq_work, bcgov_irq_work);
+	init_irq_work(&sg_policy->irq_work, pwrgov_irq_work);
 	mutex_init(&sg_policy->work_lock);
 	raw_spin_lock_init(&sg_policy->update_lock);
 	return sg_policy;
 }
 
-static void bcgov_policy_free(struct bcgov_policy *sg_policy)
+static void pwrgov_policy_free(struct pwrgov_policy *sg_policy)
 {
 	mutex_destroy(&sg_policy->work_lock);
 	kfree(sg_policy);
 }
 
-static int bcgov_kthread_create(struct bcgov_policy *sg_policy)
+static int pwrgov_kthread_create(struct pwrgov_policy *sg_policy)
 {
 	struct task_struct *thread;
 	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO / 2 };
@@ -597,13 +628,13 @@ static int bcgov_kthread_create(struct bcgov_policy *sg_policy)
 	if (policy->fast_switch_enabled)
 		return 0;
 
-	init_kthread_work(&sg_policy->work, bcgov_work);
+	init_kthread_work(&sg_policy->work, pwrgov_work);
 	init_kthread_worker(&sg_policy->worker);
 	thread = kthread_create(kthread_worker_fn, &sg_policy->worker,
-				"bcgov:%d",
+				"pwrgov:%d",
 				cpumask_first(policy->related_cpus));
 	if (IS_ERR(thread)) {
-		pr_err("failed to create bcgov thread: %ld\n", PTR_ERR(thread));
+		pr_err("failed to create pwrgov thread: %ld\n", PTR_ERR(thread));
 		return PTR_ERR(thread);
 	}
 
@@ -621,7 +652,7 @@ static int bcgov_kthread_create(struct bcgov_policy *sg_policy)
 	return 0;
 }
 
-static void bcgov_kthread_stop(struct bcgov_policy *sg_policy)
+static void pwrgov_kthread_stop(struct pwrgov_policy *sg_policy)
 {
 	/* kthread only required for slow path */
 	if (sg_policy->policy->fast_switch_enabled)
@@ -631,9 +662,9 @@ static void bcgov_kthread_stop(struct bcgov_policy *sg_policy)
 	kthread_stop(sg_policy->thread);
 }
 
-static struct bcgov_tunables *bcgov_tunables_alloc(struct bcgov_policy *sg_policy)
+static struct pwrgov_tunables *pwrgov_tunables_alloc(struct pwrgov_policy *sg_policy)
 {
-	struct bcgov_tunables *tunables;
+	struct pwrgov_tunables *tunables;
 
 	tunables = kzalloc(sizeof(*tunables), GFP_KERNEL);
 	if (tunables) {
@@ -644,7 +675,7 @@ static struct bcgov_tunables *bcgov_tunables_alloc(struct bcgov_policy *sg_polic
 	return tunables;
 }
 
-static void bcgov_tunables_free(struct bcgov_tunables *tunables)
+static void pwrgov_tunables_free(struct pwrgov_tunables *tunables)
 {
 	if (!have_governor_per_policy())
 		global_tunables = NULL;
@@ -652,10 +683,10 @@ static void bcgov_tunables_free(struct bcgov_tunables *tunables)
 	kfree(tunables);
 }
 
-static void store_tunables_data(struct bcgov_tunables *tunables,
+static void store_tunables_data(struct pwrgov_tunables *tunables,
 		struct cpufreq_policy *policy)
 {
-	struct bcgov_tunables *ptunables;
+	struct pwrgov_tunables *ptunables;
 	unsigned int cpu = cpumask_first(policy->related_cpus);
 
 	ptunables = &per_cpu(cached_tunables, cpu);
@@ -663,14 +694,15 @@ static void store_tunables_data(struct bcgov_tunables *tunables,
 		return;
 	ptunables->up_rate_limit_us = tunables->up_rate_limit_us;
 	ptunables->down_rate_limit_us = tunables->down_rate_limit_us;
+	ptunables->utilboost = tunables->utilboost;
 
 	pr_debug("tunables data saved for cpu[%u]\n", cpu);
 }
 
-static void get_tunables_data(struct bcgov_tunables *tunables,
+static void get_tunables_data(struct pwrgov_tunables *tunables,
 		struct cpufreq_policy *policy)
 {
-	struct bcgov_tunables *ptunables;
+	struct pwrgov_tunables *ptunables;
 	unsigned int lat;
 	unsigned int cpu = cpumask_first(policy->related_cpus);
 
@@ -681,6 +713,7 @@ static void get_tunables_data(struct bcgov_tunables *tunables,
 	if (ptunables->up_rate_limit_us > 0) {
 		tunables->up_rate_limit_us = ptunables->up_rate_limit_us;
 		tunables->down_rate_limit_us = ptunables->down_rate_limit_us;
+		tunables->utilboost = ptunables->utilboost;
 		pr_debug("tunables data restored for cpu[%u]\n", cpu);
 		goto out;
 	}
@@ -688,6 +721,12 @@ static void get_tunables_data(struct bcgov_tunables *tunables,
 initialize:
 	tunables->up_rate_limit_us = LATENCY_MULTIPLIER;
 	tunables->down_rate_limit_us = LATENCY_MULTIPLIER;
+	
+	if(cpu < 2)
+		tunables->utilboost = UTILBOOST;
+	else
+		tunables->utilboost = UTILBOOST_BC;
+		
 	lat = policy->cpuinfo.transition_latency / NSEC_PER_USEC;
 	if (lat) {
 		tunables->up_rate_limit_us *= lat;
@@ -699,21 +738,21 @@ out:
 	return;
 }
 
-static int bcgov_init(struct cpufreq_policy *policy)
+static int pwrgov_init(struct cpufreq_policy *policy)
 {
-	struct bcgov_policy *sg_policy;
-	struct bcgov_tunables *tunables;
+	struct pwrgov_policy *sg_policy;
+	struct pwrgov_tunables *tunables;
 	int ret = 0;
 
 	/* State should be equivalent to EXIT */
 	if (policy->governor_data)
 		return -EBUSY;
 
-	sg_policy = bcgov_policy_alloc(policy);
+	sg_policy = pwrgov_policy_alloc(policy);
 	if (!sg_policy)
 		return -ENOMEM;
 
-	ret = bcgov_kthread_create(sg_policy);
+	ret = pwrgov_kthread_create(sg_policy);
 	if (ret)
 		goto free_sg_policy;
 
@@ -731,7 +770,7 @@ static int bcgov_init(struct cpufreq_policy *policy)
 		goto out;
 	}
 
-	tunables = bcgov_tunables_alloc(sg_policy);
+	tunables = pwrgov_tunables_alloc(sg_policy);
 	if (!tunables) {
 		ret = -ENOMEM;
 		goto stop_kthread;
@@ -742,9 +781,9 @@ static int bcgov_init(struct cpufreq_policy *policy)
 	policy->governor_data = sg_policy;
 	sg_policy->tunables = tunables;
 
-	ret = kobject_init_and_add(&tunables->attr_set.kobj, &bcgov_tunables_ktype,
+	ret = kobject_init_and_add(&tunables->attr_set.kobj, &pwrgov_tunables_ktype,
 				   get_governor_parent_kobj(policy), "%s",
-				   cpufreq_gov_pwrutil_bc.name);
+				   cpufreq_gov_pwrutil.name);
 	if (ret)
 		goto fail;
 
@@ -756,23 +795,23 @@ static int bcgov_init(struct cpufreq_policy *policy)
 
  fail:
 	policy->governor_data = NULL;
-	bcgov_tunables_free(tunables);
+	pwrgov_tunables_free(tunables);
 
 stop_kthread:
-	bcgov_kthread_stop(sg_policy);
+	pwrgov_kthread_stop(sg_policy);
 
 free_sg_policy:
 	mutex_unlock(&global_tunables_lock);
 
-	bcgov_policy_free(sg_policy);
+	pwrgov_policy_free(sg_policy);
 	pr_err("initialization failed (error %d)\n", ret);
 	return ret;
 }
 
-static int bcgov_exit(struct cpufreq_policy *policy)
+static int pwrgov_exit(struct cpufreq_policy *policy)
 {
-	struct bcgov_policy *sg_policy = policy->governor_data;
-	struct bcgov_tunables *tunables = sg_policy->tunables;
+	struct pwrgov_policy *sg_policy = policy->governor_data;
+	struct pwrgov_tunables *tunables = sg_policy->tunables;
 	unsigned int count;
 
 	cpufreq_disable_fast_switch(policy);
@@ -783,19 +822,19 @@ static int bcgov_exit(struct cpufreq_policy *policy)
 	count = gov_attr_set_put(&tunables->attr_set, &sg_policy->tunables_hook);
 	policy->governor_data = NULL;
 	if (!count)
-		bcgov_tunables_free(tunables);
+		pwrgov_tunables_free(tunables);
 
 	mutex_unlock(&global_tunables_lock);
 	
-	bcgov_kthread_stop(sg_policy);
-	bcgov_policy_free(sg_policy);
+	pwrgov_kthread_stop(sg_policy);
+	pwrgov_policy_free(sg_policy);
 
 	return 0;
 }
 
-static int bcgov_start(struct cpufreq_policy *policy)
+static int pwrgov_start(struct cpufreq_policy *policy)
 {
-	struct bcgov_policy *sg_policy = policy->governor_data;
+	struct pwrgov_policy *sg_policy = policy->governor_data;
 	unsigned int cpu;
 
 	sg_policy->up_rate_delay_ns =
@@ -809,7 +848,7 @@ static int bcgov_start(struct cpufreq_policy *policy)
 	sg_policy->need_freq_update = false;
 
 	for_each_cpu(cpu, policy->cpus) {
-		struct bcgov_cpu *sg_cpu = &per_cpu(bcgov_cpu, cpu);
+		struct pwrgov_cpu *sg_cpu = &per_cpu(pwrgov_cpu, cpu);
 
 		sg_cpu->sg_policy = sg_policy;
 		if (policy_is_shared(policy)) {
@@ -821,18 +860,18 @@ static int bcgov_start(struct cpufreq_policy *policy)
 			sg_cpu->iowait_boost = 0;
 			sg_cpu->iowait_boost_max = policy->cpuinfo.max_freq;
 			cpufreq_add_update_util_hook(cpu, &sg_cpu->update_util,
-						     bcgov_update_shared);
+						     pwrgov_update_shared);
 		} else {
 			cpufreq_add_update_util_hook(cpu, &sg_cpu->update_util,
-						     bcgov_update_single);
+						     pwrgov_update_single);
 		}
 	}
 	return 0;
 }
 
-static int bcgov_stop(struct cpufreq_policy *policy)
+static int pwrgov_stop(struct cpufreq_policy *policy)
 {
-	struct bcgov_policy *sg_policy = policy->governor_data;
+	struct pwrgov_policy *sg_policy = policy->governor_data;
 	unsigned int cpu;
 
 	for_each_cpu(cpu, policy->cpus)
@@ -846,9 +885,9 @@ static int bcgov_stop(struct cpufreq_policy *policy)
 	return 0;
 }
 
-static int bcgov_limits(struct cpufreq_policy *policy)
+static int pwrgov_limits(struct cpufreq_policy *policy)
 {
-	struct bcgov_policy *sg_policy = policy->governor_data;
+	struct pwrgov_policy *sg_policy = policy->governor_data;
 
 	if (!policy->fast_switch_enabled) {
 		mutex_lock(&sg_policy->work_lock);
@@ -861,36 +900,37 @@ static int bcgov_limits(struct cpufreq_policy *policy)
 	return 0;
 }
 
-static int cpufreq_pwrutil_bc_cb(struct cpufreq_policy *policy,
+static int cpufreq_pwrutil_cb(struct cpufreq_policy *policy,
 				unsigned int event)
 {
 	switch(event) {
 	case CPUFREQ_GOV_POLICY_INIT:
-		return bcgov_init(policy);
+		return pwrgov_init(policy);
 	case CPUFREQ_GOV_POLICY_EXIT:
-		return bcgov_exit(policy);
+		return pwrgov_exit(policy);
 	case CPUFREQ_GOV_START:
-		return bcgov_start(policy);
+		return pwrgov_start(policy);
 	case CPUFREQ_GOV_STOP:
-		return bcgov_stop(policy);
+		return pwrgov_stop(policy);
 	case CPUFREQ_GOV_LIMITS:
-		return bcgov_limits(policy);
+		return pwrgov_limits(policy);
 	default:
 		BUG();
 	}
 }
 
-#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_PWRUTIL_BC
+#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_PWRUTIL
 static
 #endif
-struct cpufreq_governor cpufreq_gov_pwrutil_bc = {
-	.name = "pwrutil_bc",
-	.governor = cpufreq_pwrutil_bc_cb,
+struct cpufreq_governor cpufreq_gov_pwrutil = {
+	.name = "pwrutil",
+	.governor = cpufreq_pwrutil_cb,
 	.owner = THIS_MODULE,
 };
 
-static int __init bcgov_register(void)
+static int __init pwrgov_register(void)
 {
-	return cpufreq_register_governor(&cpufreq_gov_pwrutil_bc);
+	return cpufreq_register_governor(&cpufreq_gov_pwrutil);
 }
-fs_initcall(bcgov_register);
+fs_initcall(pwrgov_register);
+
