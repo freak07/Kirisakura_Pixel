@@ -419,24 +419,6 @@ struct cfs_rq {
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 };
 
-/* Capacity capping -related fields in a runqueue */
-struct cap_clamp_cpu {
-	/*
-	 * RBTree to keep sorted capacity constraints
-	 * of currently RUNNABLE tasks on a CPU.
-	 */
-	struct rb_root tree;
-
-	/*
-	 * Pointers to the RUNNABLE task defining the current
-	 * capacity constraint for a CPU.
-	 */
-	struct rb_node *node;
-
-	/* Current CPU's capacity constraint */
-	unsigned int value;
-};
-
 static inline int rt_bandwidth_enabled(void)
 {
 	return sysctl_sched_rt_runtime >= 0;
@@ -623,11 +605,6 @@ struct rq {
 	struct list_head leaf_cfs_rq_list;
 	struct list_head *tmp_alone_branch;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
-
-#ifdef CONFIG_CAPACITY_CLAMPING
-	/* Min and Max capacity constraints */
-	struct cap_clamp_cpu cap_clamp_cpu[2];
-#endif /* CONFIG_CAPACITY_CLAMPING */
 
 	/*
 	 * This is part of a global counter where only the total sum
