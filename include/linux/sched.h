@@ -1469,6 +1469,9 @@ struct task_struct {
 
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
+#ifdef CONFIG_CAPACITY_CLAMPING
+	struct rb_node cap_clamp_node[2];
+#endif
 #endif
 	struct sched_dl_entity dl;
 
