@@ -204,7 +204,10 @@ static unsigned int get_next_freq(struct pwrgov_cpu *sg_cpu, unsigned long util,
 	* also boost the next frequency selection.
 	*/
 	
-	freq = freq * (util + ((util * tunables->utilboost) / 100)) / max;
+	if(tunables->utilboost != 0)
+		util = util + ((util * tunables->utilboost) / 100);
+	
+	freq = freq * util / max;
 
 	if (freq == sg_cpu->cached_raw_freq && sg_policy->next_freq != UINT_MAX)
 		return sg_policy->next_freq;
