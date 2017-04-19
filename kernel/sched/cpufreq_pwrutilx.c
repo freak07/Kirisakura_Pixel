@@ -203,7 +203,6 @@ static unsigned int get_next_freq(struct pwrgov_cpu *sg_cpu, unsigned long util,
 {
 	struct pwrgov_policy *sg_policy = sg_cpu->sg_policy;
 	struct cpufreq_policy *policy = sg_policy->policy;
-	struct pwrgov_tunables *tunables = sg_policy->tunables;
 	unsigned int freq = arch_scale_freq_invariant() ?
 				policy->max : policy->cur;
 	const bool display_on = is_display_on();
