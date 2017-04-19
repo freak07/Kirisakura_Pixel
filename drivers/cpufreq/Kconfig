@@ -191,13 +191,13 @@ config CPU_FREQ_DEFAULT_GOV_ENERGY
 	  have a look at the help section of that governor. The fallback
 	  governor will be 'performance'.
 	  
-config CPU_FREQ_DEFAULT_GOV_PWRUTIL
-	bool "pwrutil"
+config CPU_FREQ_DEFAULT_GOV_PWRUTILX
+	bool "pwrutilx"
 	depends on SMP
-	select CPU_FREQ_GOV_PWRUTIL
+	select CPU_FREQ_GOV_PWRUTILX
 	select CPU_FREQ_GOV_PERFORMANCE
 	help
-	  Use the 'pwrutil' CPUFreq governor by default. If unsure,
+	  Use the 'pwrutilx' CPUFreq governor by default. If unsure,
 	  have a look at the help section of that governor. The fallback
 	  governor will be 'performance'. 
 endchoice
@@ -410,8 +410,8 @@ config CPU_FREQ_GOV_ENERGY
 
 	  If in doubt, say N.
 	  
-config CPU_FREQ_GOV_PWRUTIL
-	bool "'pwrutil' cpufreq policy governor"
+config CPU_FREQ_GOV_PWRUTILX
+	bool "'pwrutilx' cpufreq policy governor"
 	depends on CPU_FREQ && SMP
 	select CPU_FREQ_GOV_ATTR_SET
 	select IRQ_WORK
