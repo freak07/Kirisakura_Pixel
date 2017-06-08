@@ -17,7 +17,6 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/mutex.h>
-#include <linux/clk.h>
 #include <linux/cpu.h>
 #include <linux/of.h>
 #include <linux/irqchip/msm-mpm-irq.h>
@@ -111,10 +110,6 @@ static bool suspend_in_progress;
 static struct hrtimer lpm_hrtimer;
 static struct lpm_debug *lpm_debug;
 static phys_addr_t lpm_debug_phys;
-
-DEFINE_PER_CPU(struct clk *, cpu_clocks);
-static struct clk *l2_clk;
-
 static const int num_dbg_elements = 0x100;
 static int lpm_cpu_callback(struct notifier_block *cpu_nb,
 				unsigned long action, void *hcpu);
@@ -503,24 +498,23 @@ static int cpu_power_select(struct cpuidle_device *dev,
 
 		if (next_event_us) {
 			if (next_event_us < lvl_latency_us)
-				break;
+				continue;
 
 			if (((next_event_us - lvl_latency_us) < sleep_us) ||
 					(next_event_us < sleep_us))
 				next_wakeup_us = next_event_us - lvl_latency_us;
 		}
 
-		best_level = i;
-
-		if (next_event_us && next_event_us < sleep_us &&
+		if (next_wakeup_us <= residency[i]) {
+			best_level = i;
+			if (next_event_us && next_event_us < sleep_us &&
 				(mode != MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT))
-			modified_time_us
-				= next_event_us - lvl_latency_us;
-		else
-			modified_time_us = 0;
-
-		if (next_wakeup_us <= residency[i])
+				modified_time_us
+					= next_event_us - lvl_latency_us;
+			else
+				modified_time_us = 0;
 			break;
+		}
 	}
 
 	if (modified_time_us)
@@ -617,10 +611,10 @@ static int cluster_select(struct lpm_cluster *cluster, bool from_idle)
 			continue;
 
 		if (from_idle && latency_us < pwr_params->latency_us)
-			break;
+			continue;
 
 		if (sleep_us < pwr_params->time_overhead_us)
-			break;
+			continue;
 
 		if (suspend_in_progress && from_idle && level->notify_rpm)
 			continue;
@@ -628,10 +622,10 @@ static int cluster_select(struct lpm_cluster *cluster, bool from_idle)
 		if (level->notify_rpm && msm_rpm_waiting_for_ack())
 			continue;
 
-		best_level = i;
-
-		if (from_idle && sleep_us <= pwr_params->max_residency)
+		if (sleep_us <= pwr_params->max_residency) {
+			best_level = i;
 			break;
+		}
 	}
 
 	return best_level;
@@ -689,9 +683,6 @@ static int cluster_configure(struct lpm_cluster *cluster, int idx,
 		us = us + 1;
 		do_div(us, USEC_PER_SEC/SCLK_HZ);
 		msm_mpm_enter_sleep(us, from_idle, cpumask);
-
-		if (cluster->no_saw_devices && !use_psci)
-			msm_spm_set_rpm_hs(true);
 	}
 
 	/* Notify cluster enter event after successfully config completion */
@@ -814,9 +805,6 @@ static void cluster_unprepare(struct lpm_cluster *cluster,
 
 		lpm_wa_cx_unvote_send();
 		msm_mpm_exit_sleep(from_idle);
-
-		if (cluster->no_saw_devices && !use_psci)
-			msm_spm_set_rpm_hs(false);
 	}
 
 	update_debug_pc_event(CLUSTER_EXIT, cluster->last_level,
@@ -1180,7 +1168,6 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 	const struct cpumask *cpumask = get_cpu_mask(dev->cpu);
 	int64_t start_time = ktime_to_ns(ktime_get()), end_time;
 	struct power_params *pwr_params;
-	struct clk *cpu_clk = per_cpu(cpu_clocks, dev->cpu);
 
 #ifdef CONFIG_HTC_DEBUG_FOOTPRINT
 	level = &cluster->cpu->levels[idx];
@@ -1195,10 +1182,6 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 
 	trace_cpu_idle_enter(idx);
 	lpm_stats_cpu_enter(idx, start_time);
-
-	if (idx > 0 && cpu_clk && l2_clk)
-		trace_cpu_idle_enter_cpu_freq(dev->cpu, clk_get_rate(cpu_clk),
-					clk_get_rate(l2_clk));
 
 	if (!use_psci) {
 		if (idx > 0)
@@ -1224,10 +1207,6 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 exit:
 	end_time = ktime_to_ns(ktime_get());
 	lpm_stats_cpu_exit(idx, end_time, success);
-
-	if (idx > 0 && cpu_clk && l2_clk)
-		trace_cpu_idle_exit_cpu_freq(dev->cpu, clk_get_rate(cpu_clk),
-				clk_get_rate(l2_clk));
 
 	cluster_unprepare(cluster, cpumask, idx, true, end_time);
 	cpu_unprepare(cluster, idx, true);
@@ -1490,32 +1469,6 @@ static const struct platform_suspend_ops lpm_suspend_ops = {
 	.wake = lpm_suspend_wake,
 };
 
-static void lpm_clk_init(struct platform_device *pdev)
-{
-	u32 cpu;
-	char clk_name[] = "cpu??_clk";
-
-	for_each_possible_cpu(cpu) {
-		struct clk *clk = NULL;
-
-		snprintf(clk_name, sizeof(clk_name), "cpu%d_clk", cpu);
-		clk = clk_get(&pdev->dev, clk_name);
-		if (IS_ERR(clk)) {
-			pr_debug("%s: Could not get cpu_clk (-%ld)\n", __func__,
-							PTR_ERR(clk));
-			clk = NULL;
-		}
-		per_cpu(cpu_clocks, cpu) = clk;
-	}
-
-	l2_clk = clk_get(&pdev->dev, "l2_clk");
-	if (IS_ERR(l2_clk)) {
-		pr_debug("%s: Could not get l2_clk (-%ld)\n", __func__,
-							PTR_ERR(l2_clk));
-		l2_clk = NULL;
-	}
-}
-
 static int lpm_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -1545,7 +1498,6 @@ static int lpm_probe(struct platform_device *pdev)
 	put_cpu();
 	suspend_set_ops(&lpm_suspend_ops);
 	hrtimer_init(&lpm_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	lpm_clk_init(pdev);
 
 	ret = remote_spin_lock_init(&scm_handoff_lock, SCM_HANDOFF_LOCK_ID);
 	if (ret) {

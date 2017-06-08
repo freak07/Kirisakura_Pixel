@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -467,7 +467,6 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	int ret = 0;
 	u32 left_lm_w = left_lm_w_from_mfd(mfd);
 	u32 flags;
-	bool is_right_blend = false;
 
 	struct mdss_mdp_mixer *mixer = NULL;
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
@@ -570,7 +569,6 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	 * staging, same pipe will be stagged on both layer mixers.
 	 */
 	if (mdata->has_src_split) {
-		is_right_blend = pipe->is_right_blend;
 		if (left_blend_pipe) {
 			if (pipe->priority <= left_blend_pipe->priority) {
 				pr_err("priority limitation. left:%d right%d\n",
@@ -580,7 +578,7 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 				goto end;
 			} else {
 				pr_debug("pipe%d is a right_pipe\n", pipe->num);
-				is_right_blend = true;
+				pipe->is_right_blend = true;
 			}
 		} else if (pipe->is_right_blend) {
 			/*
@@ -589,7 +587,7 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 			 */
 			mdss_mdp_mixer_pipe_unstage(pipe, pipe->mixer_left);
 			mdss_mdp_mixer_pipe_unstage(pipe, pipe->mixer_right);
-			is_right_blend = false;
+			pipe->is_right_blend = false;
 		}
 
 		if (is_split_lm(mfd) && __layer_needs_src_split(layer)) {
@@ -615,7 +613,6 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 			}
 			pipe->src_split_req = false;
 		}
-		pipe->is_right_blend = is_right_blend;
 	}
 
 	pipe->multirect.mode = vinfo->multirect.mode;
